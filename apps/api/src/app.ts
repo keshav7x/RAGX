@@ -28,6 +28,9 @@ app.use("/api/v1/auth", authRoutes)
 app.use("/api/v1/projects", projectRoutes)
 app.use("/api/v1", documentRoutes)
 
+// Alias /v1 routes to match the official SDK and README documentation
+app.use("/v1", documentRoutes)
+
 
 app.use(notFoundMiddleware)
 app.use(errorMiddleware)

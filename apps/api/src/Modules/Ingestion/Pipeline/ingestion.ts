@@ -1,3 +1,4 @@
+import fs from "node:fs/promises"
 import path from "node:path"
 
 import { DefaultCleaner } from "../Cleaner"
@@ -154,14 +155,20 @@ export async function ingestFile(
   options: { documentId?: string; mimeType?: string } = {},
 ): Promise<IngestionResult> {
   const absolutePath = path.resolve(filePath)
-  const file = Bun.file(absolutePath)
-  if (!(await file.exists())) {
+
+  try {
+    const stats = await fs.stat(absolutePath)
+    if (stats.isDirectory()) {
+      throw new NotFoundError(`Document path is a directory: ${filePath}`)
+    }
+  } catch (error) {
+    if (error instanceof NotFoundError) throw error
     throw new NotFoundError(`Document file not found: ${filePath}`)
   }
 
   let data: Buffer
   try {
-    data = Buffer.from(await file.arrayBuffer())
+    data = await fs.readFile(absolutePath)
   } catch (error) {
     throw new DocumentLoadError(`Failed to read document file: ${filePath}`, {
       cause: error,

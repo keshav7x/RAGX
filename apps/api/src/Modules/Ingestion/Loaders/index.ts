@@ -1,3 +1,4 @@
+import fs from "node:fs/promises";
 import path from "node:path";
 
 import { readPdf } from "./pdf.loader";
@@ -75,6 +76,9 @@ export async function loadDocument(
 
     case ".csv":
       return readCsv(filePath);
+
+    case ".json":
+      return (await fs.readFile(path.resolve(filePath), "utf-8")).trim();
 
     default:
       throw new Error(`Unsupported document type: ${extension}`);
