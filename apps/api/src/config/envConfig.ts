@@ -8,6 +8,7 @@
 // WHY: scattered `process.env.X` reads make missing-variable failures
 // surface deep inside request handling instead of at startup, and make it
 // easy to accidentally expose server secrets to client bundles.
+import path from "node:path";
 
 export interface AppConfig {
   DATABASE_URL: string;
@@ -110,7 +111,6 @@ function isValidEncryptionKeyRaw(raw: string): boolean {
   }
   return Buffer.from(raw, "utf8").length === 32;
 }
-
 /** Cookie lifetime derived from JWT lifetime so sessions expire together. */
 export function getAuthCookieMaxAgeMs(): number {
   const parsed = parseExpiresInToMs(envConfig.JWT_EXPIRES_IN);
@@ -121,6 +121,23 @@ export function getAuthCookieMaxAgeMs(): number {
     return DEFAULT_AUTH_COOKIE_MAX_AGE_MS;
   }
   return parsed;
+}
+
+/**
+ * Absolute, jail-safe storage root. Relative values resolve against the
+ * process working directory; the filesystem root itself is always
+ * rejected (an upload jail rooted at `/` is no jail at all).
+ */
+export function getStorageDir(): string {
+  const raw = envConfig.STORAGE_DIR;
+  if (!raw || raw.trim().length === 0) {
+    throw new Error("[config] STORAGE_DIR is not configured");
+  }
+  const absolute = path.resolve(raw);
+  if (absolute === path.parse(absolute).root) {
+    throw new Error("[config] STORAGE_DIR must not be the filesystem root");
+  }
+  return absolute;
 }
 
 function parsePort(value: string | undefined): number {
@@ -184,6 +201,14 @@ export function validateStartupConfig(): void {
     problems.push(
       "RAGX_ENCRYPTION_KEY is missing or not 32 bytes (64 hex chars, base64, or 32 raw chars; generate with: openssl rand -hex 32)",
     );
+  }
+  try {
+    getStorageDir();
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    // A root-level jail is never valid, even in development.
+    if (message.includes("filesystem root")) throw error;
+    problems.push("STORAGE_DIR is missing");
   }
 
   if (problems.length === 0) return;

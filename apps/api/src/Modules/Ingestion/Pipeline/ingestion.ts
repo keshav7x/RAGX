@@ -147,22 +147,66 @@ export async function ingestDocument(
 /**
  * File-based entry point: loads bytes with Bun, detects the MIME type,
  * then runs the standard ingestDocument flow.
+ *
+ * Hardening: the path is never trusted blindly — directories are
+ * rejected, the size is capped *before* reading (`stat`) and re-checked
+ * *after* reading (a file that grows between the two is rejected instead
+ * of being buffered unboundedly), and callers handling untrusted paths
+ * can additionally jail reads with `options.allowedDir` (compared after
+ * `realpath`, so symlink escapes are refused).
  */
 export async function ingestFile(
   filePath: string,
   deps: IngestionDeps = {},
   logger: IngestionLogger = defaultLogger,
-  options: { documentId?: string; mimeType?: string } = {},
+  options: {
+    documentId?: string
+    mimeType?: string
+    /** Optional jail root for untrusted paths. Compared after realpath. */
+    allowedDir?: string
+    /** Read cap in bytes. Defaults to the 15MB document limit. */
+    maxBytes?: number
+  } = {},
 ): Promise<IngestionResult> {
+  const maxBytes =
+    options.maxBytes ?? 15 * 1024 * 1024
+  if (!Number.isInteger(maxBytes) || maxBytes <= 0) {
+    throw new BadRequestError("maxBytes must be a positive integer")
+  }
+  if (typeof filePath !== "string" || filePath.length === 0) {
+    throw new NotFoundError("Document file not found")
+  }
+
   const absolutePath = path.resolve(filePath)
 
+  // Jail check first so a disallowed path fails before any fs access
+  // beyond resolving it. `realpath` settles symlinks; a missing file
+  // falls back to its parent dir so `a/../b` tricks still resolve.
+  if (options.allowedDir) {
+    const [realTarget, realRoot] = await Promise.all([
+      fs.realpath(absolutePath).catch(() => fs.realpath(path.dirname(absolutePath)).then((dir) => path.join(dir, path.basename(absolutePath)))),
+      fs.realpath(path.resolve(options.allowedDir)),
+    ])
+    if (realTarget !== realRoot && !realTarget.startsWith(realRoot + path.sep)) {
+      throw new NotFoundError(`Document file not found: ${filePath}`)
+    }
+  }
+
+  let size: number
   try {
     const stats = await fs.stat(absolutePath)
     if (stats.isDirectory()) {
       throw new NotFoundError(`Document path is a directory: ${filePath}`)
     }
+    size = stats.size
+    if (size === 0 || size > maxBytes) {
+      throw new DocumentEmptyError(
+        "Document is empty or exceeds the size limit",
+      )
+    }
   } catch (error) {
     if (error instanceof NotFoundError) throw error
+    if (error instanceof DocumentEmptyError) throw error
     throw new NotFoundError(`Document file not found: ${filePath}`)
   }
 
@@ -173,6 +217,9 @@ export async function ingestFile(
     throw new DocumentLoadError(`Failed to read document file: ${filePath}`, {
       cause: error,
     })
+  }
+  if (data.length === 0 || data.length > maxBytes) {
+    throw new DocumentEmptyError("Document is empty or exceeds the size limit")
   }
 
   return ingestDocument(

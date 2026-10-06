@@ -1,5 +1,10 @@
 import app from "@/app";
-import { envConfig, validateStartupConfig } from "@/config/envConfig";
+import {
+  envConfig,
+  isProduction,
+  validateStartupConfig,
+} from "@/config/envConfig";
+import { ensureStorageDir } from "@/Modules/Storage/objectStorage";
 import { createProcessDocumentHandler } from "@/Modules/Documents/Jobs/handlers/process-document.job";
 import { initDocumentJobs, recoverPendingDocuments } from "@/Modules/Documents/Jobs/document.jobs";
 import { DocumentService } from "@/Modules/Documents/Services/document.services";
@@ -28,6 +33,17 @@ initDocumentJobs(createProcessDocumentHandler(documentService));
 // In production this throws; in development/test it warns (except PORT and
 // JWT_EXPIRES_IN, which always throw because they would crash per request).
 validateStartupConfig();
+
+// Prove the object-storage jail exists and is writable before serving
+// traffic. Production refuses to boot without it; development warns.
+try {
+  ensureStorageDir();
+} catch (error) {
+  if (isProduction) throw error;
+  console.warn(
+    `[storage] ${error instanceof Error ? error.message : error}; continuing because NODE_ENV=${envConfig.NODE_ENV}.`,
+  );
+}
 
 app.listen(envConfig.PORT,()=>{
     console.log(`server is listening at port ${envConfig.PORT}`);

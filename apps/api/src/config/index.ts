@@ -9,6 +9,7 @@ export {
   MIN_JWT_SECRET_LENGTH,
   envConfig,
   getAuthCookieMaxAgeMs,
+  getStorageDir,
   isProduction,
   isStrongJwtSecret,
   parseExpiresInToMs,

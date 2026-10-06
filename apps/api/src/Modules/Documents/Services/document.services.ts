@@ -107,15 +107,28 @@ function decodeContent(contentBase64: string): Buffer {
       "Document content is empty or exceeds the 15MB limit",
     );
   }
+  // Strip client-inserted whitespace first so length/padding checks apply
+  // to the real payload. `Buffer.from(x, "base64")` never throws and
+  // silently drops non-alphabet characters, so validate strictly here:
+  // correct length bound, quad-aligned, canonical alphabet only.
+  const compact = contentBase64.replace(/\s+/g, "");
   // Base64 inflates raw bytes by ~4/3. Reject oversized payloads before
   // allocating the decoded Buffer so a huge upload never spikes memory.
   const maxBase64Length = Math.ceil((MAX_DOCUMENT_BYTES * 4) / 3) + 1024;
-  if (contentBase64.length > maxBase64Length) {
+  if (compact.length === 0 || compact.length > maxBase64Length) {
     throw new DocumentEmptyError(
       "Document content is empty or exceeds the 15MB limit",
     );
   }
-  const buffer = Buffer.from(contentBase64, "base64");
+  if (
+    compact.length % 4 !== 0 ||
+    !/^[A-Za-z0-9+/]*={0,2}$/.test(compact)
+  ) {
+    throw new DocumentEmptyError(
+      "Document content is empty or exceeds the 15MB limit",
+    );
+  }
+  const buffer = Buffer.from(compact, "base64");
   if (buffer.length === 0 || buffer.length > MAX_DOCUMENT_BYTES) {
     throw new DocumentEmptyError(
       "Document content is empty or exceeds the 15MB limit",

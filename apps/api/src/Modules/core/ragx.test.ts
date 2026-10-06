@@ -154,6 +154,14 @@ function repos() {
     ) => {
       chunks.push(...rows);
     },
+    deleteChunksByDocument: async (documentId: string, projectId: string) => {
+      for (let i = chunks.length - 1; i >= 0; i--) {
+        const row = chunks[i]!;
+        if (row.documentId === documentId && row.projectId === projectId) {
+          chunks.splice(i, 1);
+        }
+      }
+    },
     listChunksByProject: async (projectId: string) =>
       chunks.filter((c) => c.projectId === projectId),
   };
