@@ -173,12 +173,16 @@ export class DocumentRepository {
    * Remove stale chunks for one document before (re)inserting.
    * Makes retries idempotent: a FAILED attempt that already wrote rows,
    * or a PROCESSING row requeued after a crash, never leaves duplicates.
-   * Scoped by documentId only — the caller already verified project
-   * ownership via findById, so no cross-project delete is possible here.
+   * Scoped by (documentId, projectId) so a caller-supplied ID can never
+   * reach another project's vectors even if ownership check is skipped.
    */
-  async deleteChunksByDocument(documentId: string) {
+  async deleteChunksByDocument(documentId: string, projectId?: string) {
+    const conditions = [eq(documentChunkTable.documentId, documentId)];
+    if (projectId) {
+      conditions.push(eq(documentChunkTable.projectId, projectId));
+    }
     await this.DB.delete(documentChunkTable).where(
-      eq(documentChunkTable.documentId, documentId),
+      conditions.length > 1 ? and(...conditions) : conditions[0],
     );
   }
 
@@ -194,5 +198,30 @@ export class DocumentRepository {
       })
       .from(documentChunkTable)
       .where(eq(documentChunkTable.projectId, projectId));
+  }
+
+  /**
+   * Chunks for an explicit document set (knowledge-base filtering).
+   * Always scoped to the project alongside the document list, so a
+   * caller-supplied ID set can never reach another project's vectors.
+   */
+  async listChunksByDocuments(projectId: string, documentIds: string[]) {
+    if (documentIds.length === 0) return [];
+    return this.DB
+      .select({
+        id: documentChunkTable.id,
+        documentId: documentChunkTable.documentId,
+        page: documentChunkTable.page,
+        text: documentChunkTable.text,
+        embedding: documentChunkTable.embedding,
+        metadata: documentChunkTable.metadata,
+      })
+      .from(documentChunkTable)
+      .where(
+        and(
+          eq(documentChunkTable.projectId, projectId),
+          inArray(documentChunkTable.documentId, documentIds),
+        ),
+      );
   }
 }

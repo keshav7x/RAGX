@@ -1,1314 +1,632 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { AnimatePresence, motion } from "framer-motion";
-import {
-  ArrowUpRight,
-  Check,
-  ChevronDown,
-  Copy,
-  Search,
-  Terminal,
-} from "lucide-react";
+import { Check, Copy, Search } from "lucide-react";
 import { LogoMark } from "../../components/Logo";
 
-const SECTIONS = [
-  { id: "start", label: "Quickstart" },
-  { id: "process", label: "Pipeline" },
-  { id: "parsing", label: "Parsing" },
-  { id: "versus", label: "RAGX vs DIY" },
-  { id: "safety", label: "Security" },
-  { id: "concepts", label: "Concepts" },
-  { id: "api", label: "API" },
-  { id: "sdk", label: "SDK" },
-] as const;
+/* ============================================================================
+ * DATA
+ * ========================================================================== */
 
-interface Route {
-  method: "GET" | "POST" | "PATCH" | "DELETE";
-  path: string;
-  desc: string;
-  auth: "cookie" | "key";
-  req: string;
-  res: string;
-}
-
-const BASE = "http://localhost:3000/api/v1";
-
-const ROUTES: Route[] = [
+const GROUPS: { title: string; items: { id: string; label: string }[] }[] = [
   {
-    method: "POST",
-    path: "/auth/register",
-    desc: "Create account",
-    auth: "cookie",
-    req: `curl -X POST ${BASE}/auth/register \\
-  -H "Content-Type: application/json" \\
-  -d '{"username":"keshav","email":"you@dev.io","password":"••••••••"}'`,
-    res: `{
-  "id": "usr_9f2a",
-  "username": "keshav",
-  "email": "you@dev.io"
-}`,
+    title: "Getting Started",
+    items: [
+      { id: "introduction", label: "Introduction" },
+      { id: "dashboard", label: "Dashboard" },
+      { id: "installation", label: "Installation" },
+      { id: "quickstart", label: "Quickstart" },
+      { id: "configuration", label: "Configuration" },
+      { id: "environment", label: "Environment Variables" },
+      { id: "commands", label: "Common Commands" },
+    ],
   },
   {
-    method: "POST",
-    path: "/auth/login",
-    desc: "Create session",
-    auth: "cookie",
-    req: `curl -X POST ${BASE}/auth/login -c cookies.txt \\
-  -H "Content-Type: application/json" \\
-  -d '{"email":"you@dev.io","password":"••••••••"}'`,
-    res: `{
-  "id": "usr_9f2a",
-  "username": "keshav"
-}`,
+    title: "Usage",
+    items: [
+      { id: "upload", label: "Upload Documents" },
+      { id: "upload-many", label: "Multiple Documents" },
+      { id: "documents-api", label: "Document Management" },
+      { id: "search", label: "Search" },
+      { id: "search-options", label: "Search Options" },
+      { id: "knowledge-bases", label: "Knowledge Bases" },
+    ],
   },
   {
-    method: "GET",
-    path: "/auth/me",
-    desc: "Current user",
-    auth: "cookie",
-    req: `curl ${BASE}/auth/me -b cookies.txt`,
-    res: `{
-  "id": "usr_9f2a",
-  "email": "you@dev.io"
-}`,
+    title: "Guides",
+    items: [
+      { id: "rag-application", label: "Build a RAG Application" },
+      { id: "mistral", label: "Mistral Embeddings" },
+    ],
   },
   {
-    method: "POST",
-    path: "/auth/logout",
-    desc: "Clear session",
-    auth: "cookie",
-    req: `curl -X POST ${BASE}/auth/logout -b cookies.txt`,
-    res: `{
-  "success": true
-}`,
-  },
-  {
-    method: "POST",
-    path: "/projects",
-    desc: "Create project",
-    auth: "key",
-    req: `curl -X POST ${BASE}/projects \\
-  -H "Authorization: Bearer ragx_live_•••" \\
-  -H "Content-Type: application/json" \\
-  -d '{"name":"Docs Assistant"}'`,
-    res: `{
-  "project": {
-    "id": "prj_8f92",
-    "name": "Docs Assistant"
-  },
-  "apiKey": {
-    "key": "ragx_live_•••",
-    "note": "shown once"
-  }
-}`,
-  },
-  {
-    method: "GET",
-    path: "/projects",
-    desc: "List projects",
-    auth: "key",
-    req: `curl ${BASE}/projects \\
-  -H "Authorization: Bearer ragx_live_•••"`,
-    res: `[
-  {
-    "id": "prj_8f92",
-    "name": "Docs Assistant"
-  }
-]`,
-  },
-  {
-    method: "GET",
-    path: "/projects/:projectId",
-    desc: "Get project",
-    auth: "key",
-    req: `curl ${BASE}/projects/prj_8f92 \\
-  -H "Authorization: Bearer ragx_live_•••"`,
-    res: `{
-  "id": "prj_8f92",
-  "name": "Docs Assistant",
-  "documents": 482
-}`,
-  },
-  {
-    method: "PATCH",
-    path: "/projects/:projectId",
-    desc: "Update project",
-    auth: "key",
-    req: `curl -X PATCH ${BASE}/projects/prj_8f92 \\
-  -H "Authorization: Bearer ragx_live_•••" \\
-  -H "Content-Type: application/json" \\
-  -d '{"description":"Support knowledge"}'`,
-    res: `{
-  "id": "prj_8f92",
-  "description": "Support knowledge"
-}`,
-  },
-  {
-    method: "DELETE",
-    path: "/projects/:projectId",
-    desc: "Delete project",
-    auth: "key",
-    req: `curl -X DELETE ${BASE}/projects/prj_8f92 \\
-  -H "Authorization: Bearer ragx_live_•••"`,
-    res: `{
-  "success": true
-}`,
-  },
-  {
-    method: "POST",
-    path: "/projects/:projectId/api-keys",
-    desc: "Mint API key",
-    auth: "key",
-    req: `curl -X POST ${BASE}/projects/prj_8f92/api-keys \\
-  -H "Authorization: Bearer ragx_live_•••" \\
-  -H "Content-Type: application/json" \\
-  -d '{"name":"ios-app"}'`,
-    res: `{
-  "id": "key_41bd",
-  "key": "rgx_live_•••",
-  "note": "copy now — never shown again"
-}`,
-  },
-  {
-    method: "GET",
-    path: "/projects/:projectId/api-keys",
-    desc: "List API keys",
-    auth: "key",
-    req: `curl ${BASE}/projects/prj_8f92/api-keys \\
-  -H "Authorization: Bearer ragx_live_•••"`,
-    res: `[
-  {
-    "id": "key_41bd",
-    "preview": "rgx_live_••••••",
-    "name": "ios-app"
-  }
-]`,
-  },
-  {
-    method: "DELETE",
-    path: "/projects/:projectId/api-keys/:apiKeyId",
-    desc: "Revoke API key",
-    auth: "key",
-    req: `curl -X DELETE ${BASE}/projects/prj_8f92/api-keys/key_41bd \\
-  -H "Authorization: Bearer ragx_live_•••"`,
-    res: `{
-  "id": "key_41bd",
-  "revokedAt": "2026-09-25T…"
-}`,
+    title: "API Reference",
+    items: [
+      { id: "authentication", label: "Authentication" },
+      { id: "api-documents", label: "Documents" },
+      { id: "api-search", label: "Search" },
+      { id: "api-knowledge-bases", label: "Knowledge Bases" },
+      { id: "errors", label: "Errors" },
+    ],
   },
 ];
 
-const METHOD_COLOR: Record<Route["method"], string> = {
-  GET: "#0071E3",
-  POST: "#18864B",
-  PATCH: "#B45309",
-  DELETE: "#D1242F",
-};
+const ALL_SECTIONS = GROUPS.flatMap((g) => g.items);
 
-const PIPELINE = [
-  {
-    n: "01",
-    title: "Load",
-    meta: "INPUT",
-    text: "Accept PDF, DOCX, TXT, MD, HTML and CSV. Unsupported formats fail explicitly.",
-  },
-  {
-    n: "02",
-    title: "Parse",
-    meta: "STRUCTURE",
-    text: "Recover headings, paragraphs, tables, images and code into one normalized representation.",
-  },
-  {
-    n: "03",
-    title: "Chunk",
-    meta: "CONTEXT",
-    text: "Split recursively while preserving header paths, page numbers and atomic tables.",
-  },
-  {
-    n: "04",
-    title: "Embed",
-    meta: "VECTOR",
-    text: "Generate embeddings and hash-cache identical content to avoid duplicate work.",
-  },
-  {
-    n: "05",
-    title: "Retrieve",
-    meta: "SEARCH",
-    text: "Embed the query, search pgvector, filter weak matches and optionally rerank.",
-  },
-  {
-    n: "06",
-    title: "Context",
-    meta: "OUTPUT",
-    text: "Return text, similarity score, document, page and section. Generation stays yours.",
-  },
-];
+/* ============================================================================
+ * PRIMITIVES
+ * ========================================================================== */
 
-function Code({
-  code,
-  title,
-  light = false,
-}: {
-  code: string;
-  title?: string;
-  light?: boolean;
-}) {
+function Code({ lang, children }: { lang: string; children: string }) {
   const [copied, setCopied] = useState(false);
-
-  const copy = async () => {
-    try {
-      await navigator.clipboard.writeText(code);
-      setCopied(true);
-      window.setTimeout(() => setCopied(false), 1400);
-    } catch {}
-  };
-
   return (
-    <div
-      className={[
-        "overflow-hidden border",
-        light
-          ? "border-[#E5E5EA] bg-[#F7F7F8]"
-          : "border-white/[0.08] bg-[#161617]",
-      ].join(" ")}
-    >
-      <div
-        className={[
-          "flex h-10 items-center justify-between border-b px-4",
-          light ? "border-[#E5E5EA]" : "border-white/[0.08]",
-        ].join(" ")}
-      >
-        <span
-          className={[
-            "font-mono text-[11px]",
-            light ? "text-[#86868B]" : "text-white/35",
-          ].join(" ")}
-        >
-          {title ?? "code"}
-        </span>
-
+    <div className="group/code relative my-5 overflow-hidden rounded-xl border border-[#E8E8ED]">
+      <div className="flex items-center justify-between border-b border-[#F0F0F2] bg-[#F5F5F7] px-4 py-2">
+        <span className="font-mono text-[10.5px] uppercase tracking-wider text-[#6E6E73]">{lang}</span>
         <button
-          onClick={copy}
-          className={[
-            "flex items-center gap-1.5 font-mono text-[11px] transition-colors",
-            light
-              ? "text-[#86868B] hover:text-[#1D1D1F]"
-              : "text-white/35 hover:text-white",
-          ].join(" ")}
+          onClick={() => {
+            void navigator.clipboard?.writeText(children).catch(() => {});
+            setCopied(true);
+            window.setTimeout(() => setCopied(false), 1400);
+          }}
+          className="flex items-center gap-1.5 font-mono text-[11px] text-[#6E6E73] transition-colors hover:text-[#1D1D1F]"
         >
-          {copied ? (
-            <Check className="size-3.5 text-[#0071E3]" />
-          ) : (
-            <Copy className="size-3.5" />
-          )}
+          {copied ? <Check className="size-3.5 text-[#0071E3]" /> : <Copy className="size-3.5" />}
           {copied ? "copied" : "copy"}
         </button>
       </div>
-
-      <pre
-        className={[
-          "overflow-x-auto p-5 font-mono text-[12px] leading-[1.8]",
-          light ? "text-[#1D1D1F]" : "text-white/80",
-        ].join(" ")}
-      >
-        <code>{code}</code>
+      <pre className="code-scroll overflow-x-auto bg-white p-4 font-mono text-[13px] leading-[1.75]">
+        <code>
+          {children.split("\n").map((line, i) => (
+            <div key={i}>{highlightLine(line, lang)}</div>
+          ))}
+        </code>
       </pre>
     </div>
   );
 }
 
-function RetrievalVisual() {
-  return (
-    <div className="relative h-[260px] w-full overflow-hidden border border-[#E5E5EA] bg-[#FAFAFA]">
-      <div
-        className="absolute inset-0 opacity-[0.35]"
-        style={{
-          backgroundImage:
-            "linear-gradient(#E5E5EA 1px, transparent 1px), linear-gradient(90deg, #E5E5EA 1px, transparent 1px)",
-          backgroundSize: "28px 28px",
-        }}
-      />
+function highlightLine(line: string, lang: string) {
+  if (lang === "text") return <span className="text-[#1D1D1F]/85">{line || " "}</span>;
 
-      <div className="absolute inset-0 flex items-center justify-center">
-        <div className="relative w-[280px]">
-          {[0, 1, 2, 3, 4].map((i) => (
-            <motion.div
-              key={i}
-              initial={{ opacity: 0, x: -18 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{
-                delay: i * 0.08,
-                duration: 0.5,
-              }}
-              className={[
-                "absolute left-0 h-8 border bg-white",
-                i === 2
-                  ? "w-[190px] border-[#0071E3]/30 bg-[#0071E3]/[0.06]"
-                  : "w-[150px] border-[#E5E5EA]",
-              ].join(" ")}
-              style={{
-                top: `${i * 39}px`,
-                left: `${i % 2 === 0 ? 0 : 22}px`,
-              }}
-            >
-              <div className="flex h-full items-center px-3">
-                <div
-                  className={[
-                    "h-1.5 rounded-full",
-                    i === 2
-                      ? "w-[115px] bg-[#0071E3]"
-                      : "w-[75px] bg-[#D2D2D7]",
-                  ].join(" ")}
-                />
-              </div>
-            </motion.div>
-          ))}
+  // comments first
+  const commentMatch = line.match(/^(\s*)(\/\/|#)(.*)$/);
+  if (commentMatch && (lang === "bash" ? commentMatch[2] === "#" : true)) {
+    return (
+      <span>
+        <span className="text-[#1D1D1F]/85">{commentMatch[1]}</span>
+        <span className="text-[#8E8E93] italic">{commentMatch[2]}{commentMatch[3]}</span>
+      </span>
+    );
+  }
 
-          <motion.div
-            initial={{ opacity: 0, x: 80 }}
-            animate={{ opacity: [0, 1, 1, 0], x: [80, 25, 0, -12] }}
-            transition={{
-              duration: 2.6,
-              repeat: Infinity,
-              repeatDelay: 1.4,
-              ease: "easeInOut",
-            }}
-            className="absolute -right-4 top-[72px] flex items-center gap-3"
-          >
-            <div className="h-px w-12 bg-[#0071E3]" />
+  const out: React.ReactNode[] = [];
+  const regex = /("(?:[^"\\]|\\.)*")|(\/\/.*$)|(#.*$)|(\b(?:const|await|new|import|from|export|function|return|true|false|null|undefined)\b)|(\b\d+(?:\.\d+)?\b)/g;
 
-            <div className="grid size-9 place-items-center rounded-full border border-[#0071E3]/30 bg-white shadow-[0_4px_18px_rgba(0,113,227,0.14)]">
-              <ArrowUpRight className="size-4 text-[#0071E3]" />
-            </div>
-          </motion.div>
-
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: [0, 1, 0] }}
-            transition={{
-              duration: 2.6,
-              repeat: Infinity,
-              repeatDelay: 1.4,
-              times: [0, 0.35, 1],
-            }}
-            className="absolute -bottom-12 left-0 font-mono text-[10px] uppercase tracking-[0.18em] text-[#0071E3]"
-          >
-            relevant context
-          </motion.div>
-        </div>
-      </div>
-
-      <div className="absolute bottom-4 left-5 font-mono text-[10px] uppercase tracking-[0.18em] text-[#86868B]">
-        RAGX / RETRIEVAL TRACE
-      </div>
-    </div>
-  );
-}
-
-function PipelineExplorer() {
-  const [open, setOpen] = useState("03");
-
-  return (
-    <div className="border border-[#E5E5EA]">
-      {PIPELINE.map((stage, i) => {
-        const isOpen = open === stage.n;
-
-        return (
-          <div
-            key={stage.n}
-            className={i > 0 ? "border-t border-[#E5E5EA]" : ""}
-          >
-            <button
-              onClick={() => setOpen(isOpen ? "" : stage.n)}
-              className="group flex w-full items-center gap-4 px-5 py-4 text-left transition-colors hover:bg-[#FAFAFA]"
-            >
-              <span
-                className={[
-                  "font-mono text-[11px] font-medium",
-                  isOpen ? "text-[#0071E3]" : "text-[#86868B]",
-                ].join(" ")}
-              >
-                {stage.n}
-              </span>
-
-              <span className="w-20 text-[14px] font-semibold">
-                {stage.title}
-              </span>
-
-              <span className="hidden flex-1 font-mono text-[10px] uppercase tracking-[0.16em] text-[#AEAEB2] sm:block">
-                {stage.meta}
-              </span>
-
-              <ChevronDown
-                className={[
-                  "size-4 text-[#86868B] transition-transform",
-                  isOpen ? "rotate-180" : "",
-                ].join(" ")}
-              />
-            </button>
-
-            <AnimatePresence initial={false}>
-              {isOpen && (
-                <motion.div
-                  initial={{ height: 0, opacity: 0 }}
-                  animate={{ height: "auto", opacity: 1 }}
-                  exit={{ height: 0, opacity: 0 }}
-                  transition={{ duration: 0.22 }}
-                  className="overflow-hidden"
-                >
-                  <div className="border-t border-[#E5E5EA] bg-[#FAFAFA] px-5 py-5 pl-[76px]">
-                    <p className="max-w-2xl text-[14px] leading-7 text-[#6E6E73]">
-                      {stage.text}
-                    </p>
-                  </div>
-                </motion.div>
-              )}
-            </AnimatePresence>
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
-function Explorer({ routes }: { routes: Route[] }) {
-  const [open, setOpen] = useState<string | null>(routes[0]?.path ?? null);
-
-  useEffect(() => {
-    if (!routes.some((route) => route.path === open)) {
-      setOpen(routes[0]?.path ?? null);
+  if (lang === "bash") {
+    const cmd = line.match(/^\s*(bun|npm|pnpm|cd|ragx)\b(.*)$/);
+    if (cmd) {
+      const [, lead, rest] = cmd[0].match(/^(\s*)(.*)$/)!;
+      const parts = (rest ?? "").split(/(".*?"|\s+)/).filter(Boolean);
+      const commentAt = parts.findIndex((p) => p.startsWith("#"));
+      return (
+        <span>
+          <span>{lead}</span>
+          {parts.map((p, i) =>
+            commentAt !== -1 && i >= commentAt ? (
+              <span key={i} className="text-[#8E8E93] italic">{p}</span>
+            ) : i === 0 ? (
+              <span key={i} className="font-medium text-[#0071E3]">{p}</span>
+            ) : p.startsWith('"') ? (
+              <span key={i} className="text-[#B25000]">{p}</span>
+            ) : (
+              <span key={i} className="text-[#1D1D1F]/85">{p}</span>
+            ),
+          )}
+        </span>
+      );
     }
-  }, [routes, open]);
+    return <span className="text-[#1D1D1F]/85">{line || " "}</span>;
+  }
 
+  let last = 0;
+  let m: RegExpExecArray | null;
+  regex.lastIndex = 0;
+  while ((m = regex.exec(line))) {
+    if (m.index > last) out.push(<span key={last} className="text-[#1D1D1F]/85">{line.slice(last, m.index)}</span>);
+    if (m[1]) out.push(<span key={m.index} className="text-[#0071E3]">{m[1]}</span>);
+    else if (m[2] || m[3]) out.push(<span key={m.index} className="text-[#8E8E93] italic">{m[2] ?? m[3]}</span>);
+    else if (m[4]) out.push(<span key={m.index} className="font-medium text-[#AF52DE]/80">{m[4]}</span>);
+    else if (m[5]) out.push(<span key={m.index} className="text-[#B25000]">{m[5]}</span>);
+    last = m.index + m[0].length;
+  }
+  if (last < line.length) out.push(<span key={last} className="text-[#1D1D1F]/85">{line.slice(last)}</span>);
+  return line ? <>{out}</> : <span> </span>;
+}
+
+function H2({ id, children }: { id: string; children: React.ReactNode }) {
   return (
-    <div className="border border-[#E5E5EA]">
-      {routes.map((route, index) => {
-        const isOpen = open === route.path;
-
-        return (
-          <div
-            key={`${route.method}-${route.path}`}
-            className={index > 0 ? "border-t border-[#E5E5EA]" : ""}
-          >
-            <button
-              onClick={() => setOpen(isOpen ? null : route.path)}
-              className="group flex w-full items-center gap-3 px-4 py-3.5 text-left transition-colors hover:bg-[#FAFAFA]"
-            >
-              <span
-                className="w-14 shrink-0 font-mono text-[11px] font-semibold"
-                style={{ color: METHOD_COLOR[route.method] }}
-              >
-                {route.method}
-              </span>
-
-              <code className="min-w-0 flex-1 truncate font-mono text-[12px]">
-                {route.path}
-              </code>
-
-              <span className="hidden font-mono text-[10px] text-[#AEAEB2] sm:block">
-                {route.auth === "key" ? "BEARER" : "COOKIE"}
-              </span>
-
-              <ChevronDown
-                className={[
-                  "size-4 shrink-0 text-[#86868B] transition-transform",
-                  isOpen ? "rotate-180" : "",
-                ].join(" ")}
-              />
-            </button>
-
-            <AnimatePresence initial={false}>
-              {isOpen && (
-                <motion.div
-                  initial={{ height: 0, opacity: 0 }}
-                  animate={{ height: "auto", opacity: 1 }}
-                  exit={{ height: 0, opacity: 0 }}
-                  transition={{ duration: 0.22 }}
-                  className="overflow-hidden"
-                >
-                  <div className="grid gap-0 border-t border-[#E5E5EA] lg:grid-cols-2">
-                    <div className="min-w-0 border-b border-[#E5E5EA] p-4 lg:border-b-0 lg:border-r">
-                      <div className="mb-2 flex items-center gap-2">
-                        <Terminal className="size-3.5 text-[#86868B]" />
-                        <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-[#86868B]">
-                          request
-                        </span>
-                      </div>
-
-                      <Code title={route.desc} code={route.req} />
-                    </div>
-
-                    <div className="min-w-0 p-4">
-                      <div className="mb-2 flex items-center gap-2">
-                        <span className="size-1.5 rounded-full bg-[#18864B]" />
-                        <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-[#86868B]">
-                          response
-                        </span>
-                      </div>
-
-                      <Code title="application/json" code={route.res} light />
-                    </div>
-                  </div>
-                </motion.div>
-              )}
-            </AnimatePresence>
-          </div>
-        );
-      })}
-
-      {!routes.length && (
-        <div className="px-5 py-12 text-center">
-          <Search className="mx-auto size-5 text-[#AEAEB2]" />
-          <p className="mt-3 text-sm text-[#86868B]">
-            No endpoints match that filter.
-          </p>
-        </div>
-      )}
-    </div>
+    <h2 id={id} className="scroll-mt-24 pt-12 text-[22px] font-semibold tracking-[-0.02em] first:pt-0">
+      <span className="mr-2 inline-block h-2 w-2 rounded-full bg-[#0071E3] align-middle" aria-hidden />
+      {children}
+    </h2>
   );
 }
+
+function P({ children }: { children: React.ReactNode }) {
+  return <p className="mt-3 text-[15px] leading-relaxed text-[#1D1D1F]/80">{children}</p>;
+}
+
+function UL({ children }: { children: React.ReactNode }) {
+  return <ul className="mt-3 list-disc space-y-1.5 pl-5 text-[15px] leading-relaxed text-[#1D1D1F]/80">{children}</ul>;
+}
+
+const METHOD_TONE: Record<string, string> = {
+  GET: "bg-[#0071E3]/10 text-[#0071E3]",
+  POST: "bg-emerald-500/10 text-emerald-600",
+  PATCH: "bg-amber-500/10 text-amber-600",
+  DELETE: "bg-red-500/10 text-red-600",
+};
+
+function Method({ m, path }: { m: string; path: string }) {
+  return (
+    <p className="mt-4 inline-flex items-center gap-2 rounded-lg border border-[#E8E8ED] bg-[#F5F5F7] px-3 py-1.5 font-mono text-[13px]">
+      <span className={`rounded px-1.5 py-0.5 text-[11px] font-semibold ${METHOD_TONE[m] ?? "text-[#0071E3]"}`}>{m}</span>
+      <span>{path}</span>
+    </p>
+  );
+}
+
+/* ============================================================================
+ * PAGE
+ * ========================================================================== */
 
 export default function DocsPage() {
-  const [active, setActive] = useState("start");
-  const [filter, setFilter] = useState("");
-  const [tab, setTab] = useState<"sdk" | "curl">("sdk");
+  const [active, setActive] = useState("introduction");
+  const [q, setQ] = useState("");
+  const searchRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        searchRef.current?.focus();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
 
   useEffect(() => {
     const observer = new IntersectionObserver(
       (entries) => {
         const visible = entries
-          .filter((entry) => entry.isIntersecting)
+          .filter((e) => e.isIntersecting)
           .sort((a, b) => b.intersectionRatio - a.intersectionRatio)[0];
-
         if (visible) setActive(visible.target.id);
       },
-      {
-        rootMargin: "-15% 0px -70% 0px",
-        threshold: [0, 0.2, 0.5],
-      },
+      { rootMargin: "-15% 0px -70% 0px", threshold: [0, 0.2, 0.5] },
     );
-
-    SECTIONS.forEach((section) => {
-      const element = document.getElementById(section.id);
-      if (element) observer.observe(element);
+    ALL_SECTIONS.forEach((s) => {
+      const el = document.getElementById(s.id);
+      if (el) observer.observe(el);
     });
-
     return () => observer.disconnect();
   }, []);
 
-  const routes = useMemo(() => {
-    const query = filter.trim().toLowerCase();
-
-    if (!query) return ROUTES;
-
-    return ROUTES.filter(
-      (route) =>
-        route.path.toLowerCase().includes(query) ||
-        route.desc.toLowerCase().includes(query) ||
-        route.method.toLowerCase().includes(query),
-    );
-  }, [filter]);
+  const filtered = useMemo(() => {
+    const query = q.trim().toLowerCase();
+    if (!query) return GROUPS;
+    return GROUPS.map((g) => ({
+      ...g,
+      items: g.items.filter((i) => i.label.toLowerCase().includes(query)),
+    })).filter((g) => g.items.length > 0);
+  }, [q]);
 
   return (
     <main className="min-h-screen bg-white text-[#1D1D1F] antialiased">
-      {/* ─────────────────────────────────────────
-          HEADER
-      ────────────────────────────────────────── */}
-      <header className="fixed inset-x-0 top-0 z-50 border-b border-[#E5E5EA]/80 bg-white/80 backdrop-blur-xl">
+      <header className="fixed inset-x-0 top-0 z-50 border-b border-[#E8E8ED] bg-white/85 backdrop-blur-xl">
         <div className="mx-auto flex h-14 max-w-7xl items-center justify-between px-5 sm:px-8">
-          <Link
-            href="/"
-            className="group flex items-center gap-2 text-[14px] font-semibold tracking-[-0.02em]"
-          >
+          <Link href="/" className="flex items-center gap-2 text-[14px] font-semibold tracking-tight">
             <LogoMark size={21} />
-
             <span>RAGX</span>
-
-            <span className="font-mono text-[11px] font-normal text-[#AEAEB2]">
-              / docs
-            </span>
+            <span className="font-mono text-[11px] font-normal text-[#A1A1A6]">/ docs</span>
           </Link>
-
           <div className="flex items-center gap-2">
-            <div className="hidden h-8 items-center gap-2 border border-[#E5E5EA] px-3 sm:flex">
-              <Search className="size-3.5 text-[#86868B]" />
-
+            <div className="hidden h-8 items-center gap-2 rounded-md border border-[#E8E8ED] px-3 sm:flex">
+              <Search className="size-3.5 text-[#6E6E73]" />
               <input
-                value={filter}
-                onChange={(event) => setFilter(event.target.value)}
-                placeholder="Filter API…"
-                className="w-36 bg-transparent font-mono text-[11px] outline-none placeholder:text-[#AEAEB2]"
+                ref={searchRef}
+                value={q}
+                onChange={(e) => setQ(e.target.value)}
+                placeholder="Search docs…"
+                className="w-40 bg-transparent font-mono text-[12px] outline-none placeholder:text-[#A1A1A6]"
               />
+              <kbd className="rounded border border-[#E8E8ED] bg-[#F5F5F7] px-1 font-mono text-[10px] text-[#6E6E73]">⌘K</kbd>
             </div>
-
-            <Link
-              href="/dashboard"
-              className="flex h-8 items-center rounded-md bg-[#1D1D1F] px-3.5 text-[12px] font-medium text-white transition-transform hover:-translate-y-px"
-            >
+            <Link href="/dashboard" className="flex h-8 items-center rounded-md bg-[#1D1D1F] px-3.5 text-[12px] font-medium text-white">
               Dashboard
             </Link>
           </div>
         </div>
       </header>
 
-      {/* ─────────────────────────────────────────
-          HERO
-      ────────────────────────────────────────── */}
-      <section className="border-b border-[#E5E5EA] pt-28">
-        <div className="mx-auto grid max-w-7xl gap-0 px-5 sm:px-8 lg:grid-cols-[1fr_420px]">
-          <div className="flex min-h-[430px] flex-col justify-center py-16 lg:pr-16">
-            <motion.div
-              initial={{ opacity: 0, y: 8 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.2em] text-[#86868B]"
-            >
-              <span className="size-1.5 rounded-full bg-[#0071E3]" />
-              RAGX documentation
-            </motion.div>
-
-            <motion.h1
-              initial={{ opacity: 0, y: 12 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.06 }}
-              className="mt-5 max-w-3xl text-5xl font-semibold tracking-[-0.055em] sm:text-7xl sm:leading-[0.98]"
-            >
-              Retrieval,
-              <br />
-              <span className="text-[#86868B]">without the glue.</span>
-            </motion.h1>
-
-            <motion.p
-              initial={{ opacity: 0, y: 12 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.12 }}
-              className="mt-6 max-w-xl text-[16px] leading-7 text-[#6E6E73]"
-            >
-              Parsing, chunking, embeddings and retrieval infrastructure
-              designed to disappear behind one clean API.
-            </motion.p>
-
-            <motion.div
-              initial={{ opacity: 0, y: 12 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.18 }}
-              className="mt-7 flex flex-wrap items-center gap-2"
-            >
-              <a
-                href="#start"
-                className="inline-flex h-9 items-center gap-2 rounded-md bg-[#1D1D1F] px-4 text-[12px] font-medium text-white transition-transform hover:-translate-y-px"
-              >
-                Get started
-                <ArrowUpRight className="size-3.5" />
-              </a>
-
-              <a
-                href="#api"
-                className="inline-flex h-9 items-center gap-2 rounded-md border border-[#E5E5EA] px-4 font-mono text-[11px] text-[#6E6E73] transition-colors hover:bg-[#F5F5F7]"
-              >
-                API reference
-              </a>
-            </motion.div>
-          </div>
-
-          <motion.div
-            initial={{ opacity: 0, scale: 0.98 }}
-            animate={{ opacity: 1, scale: 1 }}
-            transition={{ delay: 0.2, duration: 0.6 }}
-            className="flex items-center border-t border-[#E5E5EA] py-10 lg:border-l lg:border-t-0 lg:px-10"
-          >
-            <RetrievalVisual />
-          </motion.div>
-        </div>
-      </section>
-
-      {/* ─────────────────────────────────────────
-          BODY
-      ────────────────────────────────────────── */}
-      <div className="mx-auto grid max-w-7xl gap-12 px-5 py-16 sm:px-8 lg:grid-cols-[180px_minmax(0,1fr)]">
-        {/* SIDEBAR */}
-        <nav className="lg:sticky lg:top-24 lg:self-start">
-          <div className="mb-3 font-mono text-[9px] uppercase tracking-[0.2em] text-[#AEAEB2]">
-            Contents
-          </div>
-
-          <div className="flex gap-1 overflow-x-auto pb-2 lg:flex-col lg:overflow-visible lg:pb-0">
-            {SECTIONS.map((section) => (
-              <a
-                key={section.id}
-                href={`#${section.id}`}
-                onClick={() => setActive(section.id)}
-                className={[
-                  "relative whitespace-nowrap px-2.5 py-1.5 text-[12.5px] transition-colors",
-                  active === section.id
-                    ? "font-medium text-[#1D1D1F]"
-                    : "text-[#86868B] hover:text-[#1D1D1F]",
-                ].join(" ")}
-              >
-                {active === section.id && (
-                  <motion.span
-                    layoutId="docs-indicator"
-                    className="absolute -left-1 top-1/2 h-4 w-0.5 -translate-y-1/2 rounded-full bg-[#0071E3]"
-                  />
-                )}
-
-                {section.label}
-              </a>
-            ))}
-          </div>
-        </nav>
-
-        <article className="min-w-0 space-y-28">
-          {/* QUICKSTART */}
-          <section id="start" className="scroll-mt-24">
-            <div className="grid gap-10 lg:grid-cols-[0.8fr_1.2fr]">
-              <div>
-                <div className="font-mono text-[10px] uppercase tracking-[0.18em] text-[#0071E3]">
-                  01 / Quickstart
-                </div>
-
-                <h2 className="mt-3 text-3xl font-semibold tracking-[-0.04em]">
-                  From zero to retrieval.
-                </h2>
-
-                <p className="mt-3 text-[14px] leading-7 text-[#6E6E73]">
-                  Four steps. Your application owns the experience. RAGX owns
-                  the retrieval machinery.
-                </p>
-
-                <div className="mt-8 border-l border-[#E5E5EA]">
-                  {[
-                    [
-                      "Register",
-                      "Create your account and session.",
-                    ],
-                    [
-                      "Create a project",
-                      "Get an isolated project and API key.",
-                    ],
-                    [
-                      "Install the SDK",
-                      "Use the typed client from your app.",
-                    ],
-                    [
-                      "Retrieve",
-                      "Search your knowledge base and receive scored context.",
-                    ],
-                  ].map(([title, description], index) => (
-                    <motion.div
-                      key={title}
-                      initial={{ opacity: 0, x: -8 }}
-                      whileInView={{ opacity: 1, x: 0 }}
-                      viewport={{ once: true }}
-                      transition={{ delay: index * 0.07 }}
-                      className="relative py-2 pl-6"
+      <div className="mx-auto grid max-w-7xl grid-cols-1 px-5 pt-20 sm:px-8 lg:grid-cols-[220px_minmax(0,1fr)_200px] lg:gap-10">
+        {/* Sidebar */}
+        <aside className="sticky top-20 hidden h-[calc(100vh-5rem)] overflow-y-auto pb-10 lg:block">
+          {filtered.map((g) => (
+            <div key={g.title} className="mt-6 first:mt-0">
+              <p className="font-mono text-[10.5px] uppercase tracking-[0.14em] text-[#6E6E73]">{g.title}</p>
+              <ul className="mt-2.5 space-y-0.5 border-l border-[#F0F0F2]">
+                {g.items.map((i) => (
+                  <li key={i.id}>
+                    <a
+                      href={`#${i.id}`}
+                      className={`block border-l -ml-px pl-3 py-1 text-[13.5px] transition-colors ${
+                        active === i.id
+                          ? "border-[#0071E3] font-medium text-[#0071E3]"
+                          : "border-transparent text-[#6E6E73] hover:text-[#1D1D1F]"
+                      }`}
                     >
-                      <span className="absolute -left-[4px] top-[13px] size-2 rounded-full border-2 border-white bg-[#0071E3]" />
+                      {i.label}
+                    </a>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ))}
+        </aside>
 
-                      <p className="text-[14px] font-semibold">
-                        {index + 1}. {title}
-                      </p>
+        {/* Content */}
+        <article className="min-w-0 max-w-3xl pb-24">
+          <h1 id="introduction" className="scroll-mt-24 text-[32px] font-semibold tracking-[-0.03em] pt-6">
+            Introduction
+          </h1>
+          <P>
+            RAGX is the retrieval layer for AI applications. It turns documents into searchable,
+            AI-ready context — parsing, chunking, embeddings and vector storage are handled. Your
+            application handles generation.
+          </P>
+          <Code lang="text">{`Documents
+    ↓
+  RAGX
+    ↓
+Relevant Context
+    ↓
+ Your LLM`}</Code>
+          <P>
+            <span className="font-medium">RAGX handles retrieval.</span>{" "}
+            <span className="font-medium">Your application handles generation.</span>
+          </P>
 
-                      <p className="mt-0.5 text-[13px] text-[#86868B]">
-                        {description}
-                      </p>
-                    </motion.div>
-                  ))}
-                </div>
-              </div>
+          <H2 id="dashboard">Dashboard</H2>
+          <P>
+            The RAGX dashboard at <Link href="/dashboard" className="text-[#0071E3] underline-offset-2 hover:underline">/dashboard</Link> is where you manage
+            everything day to day:
+          </P>
+          <UL>
+            <li><span className="font-medium">Projects</span> — isolate documents, chunks, searches and API keys per workspace.</li>
+            <li><span className="font-medium">Documents</span> — upload files into a specific project and watch parsing, chunking and embedding progress.</li>
+            <li><span className="font-medium">Collections</span> — group documents into knowledge bases and scope retrieval to them.</li>
+            <li><span className="font-medium">Search</span> — run the same semantic retrieval your integration uses, with scores and sources.</li>
+            <li><span className="font-medium">Usage</span> — retrievals, processed documents, chunk counts and embedding requests over time.</li>
+            <li><span className="font-medium">Settings → API Keys</span> — create and revoke <span className="font-mono text-[13px]">ragx_live_…</span> keys and manage embedding provider credentials.</li>
+          </UL>
 
-              <div>
-                <div className="mb-2 flex border-b border-[#E5E5EA]">
-                  {(["sdk", "curl"] as const).map((value) => (
-                    <button
-                      key={value}
-                      onClick={() => setTab(value)}
-                      className={[
-                        "border-b-2 px-3 py-2 font-mono text-[11px] transition-colors",
-                        tab === value
-                          ? "border-[#0071E3] text-[#1D1D1F]"
-                          : "border-transparent text-[#86868B]",
-                      ].join(" ")}
-                    >
-                      {value === "sdk" ? "TypeScript" : "cURL"}
-                    </button>
-                  ))}
-                </div>
+          <H2 id="installation">Installation</H2>
+          <P>Install the SDK into your project:</P>
+          <Code lang="bash">bun add @ragx/sdk</Code>
+          <Code lang="bash">npm install @ragx/sdk</Code>
+          <Code lang="bash">pnpm add @ragx/sdk</Code>
+          <P>The package exposes the RAGX client that talks to the RAGX API over HTTPS.</P>
 
-                {tab === "sdk" ? (
-                  <Code
-                    title="app.ts"
-                    code={`import RAGX from "@ragx/sdk";
+          <H2 id="quickstart">Quickstart</H2>
+          <P>Copy this into a file and fill in your keys. Every step is one API call.</P>
+          <Code lang="ts">{`import RAGX from "@ragx/sdk";
 
 const ragx = new RAGX({
   apiKey: process.env.RAGX_API_KEY,
-});
-
-const results = await ragx.search(
-  "How does authentication work?",
-  {
-    knowledgeBase: "kb_123",
-    topK: 5,
-  }
-);
-
-// [
-//   {
-//     text,
-//     score: 0.94,
-//     documentId,
-//     page: 12
-//   }
-// ]`}
-                  />
-                ) : (
-                  <Code
-                    title="terminal"
-                    code={`curl -X POST ${BASE}/projects \\
-  -b cookies.txt \\
-  -H "Content-Type: application/json" \\
-  -d '{"name":"Docs Assistant"}'
-
-# → { project, apiKey: { key: "ragx_live_•••" } }`}
-                  />
-                )}
-              </div>
-            </div>
-          </section>
-
-          {/* PIPELINE */}
-          <section id="process" className="scroll-mt-24">
-            <div className="max-w-2xl">
-              <div className="font-mono text-[10px] uppercase tracking-[0.18em] text-[#0071E3]">
-                02 / Pipeline
-              </div>
-
-              <h2 className="mt-3 text-3xl font-semibold tracking-[-0.04em]">
-                The work behind one query.
-              </h2>
-
-              <p className="mt-3 text-[14px] leading-7 text-[#6E6E73]">
-                RAGX turns messy documents into retrievable context through a
-                deterministic pipeline.
-              </p>
-            </div>
-
-            <div className="mt-8">
-              <PipelineExplorer />
-            </div>
-          </section>
-
-          {/* PARSING */}
-          <section id="parsing" className="scroll-mt-24">
-            <div className="max-w-2xl">
-              <div className="font-mono text-[10px] uppercase tracking-[0.18em] text-[#0071E3]">
-                03 / Parsing
-              </div>
-
-              <h2 className="mt-3 text-3xl font-semibold tracking-[-0.04em]">
-                Structure survives the parser.
-              </h2>
-
-              <p className="mt-3 text-[14px] leading-7 text-[#6E6E73]">
-                A PDF isn't just text. Neither is a DOCX, spreadsheet or web
-                page. RAGX preserves useful structure before retrieval ever
-                starts.
-              </p>
-            </div>
-
-            <div className="mt-8 grid border border-[#E5E5EA] sm:grid-cols-2">
-              {[
-                [
-                  "PDF",
-                  "Per-page text extraction, tables, embedded images and OCR fallback for scanned pages.",
-                ],
-                [
-                  "Markdown",
-                  "Headings, lists and fenced code blocks remain native structure.",
-                ],
-                [
-                  "DOCX",
-                  "Paragraphs, headings and tables recovered from document XML.",
-                ],
-                [
-                  "HTML",
-                  "Scripts and styles removed while article hierarchy remains intact.",
-                ],
-                [
-                  "CSV",
-                  "Headers become field names so each record remains semantically labeled.",
-                ],
-                [
-                  "TXT",
-                  "Paragraph-aware plain text with no structure invented.",
-                ],
-              ].map(([name, description], index) => (
-                <motion.div
-                  key={name}
-                  initial={{ opacity: 0, y: 8 }}
-                  whileInView={{ opacity: 1, y: 0 }}
-                  viewport={{ once: true }}
-                  transition={{ delay: (index % 2) * 0.06 }}
-                  className={[
-                    "p-5",
-                    index % 2 === 1 ? "sm:border-l sm:border-[#E5E5EA]" : "",
-                    index >= 2 ? "border-t border-[#E5E5EA]" : "",
-                  ].join(" ")}
-                >
-                  <div className="flex items-center justify-between">
-                    <span className="font-mono text-[11px] font-semibold text-[#0071E3]">
-                      {name}
-                    </span>
-
-                    <span className="font-mono text-[9px] uppercase tracking-widest text-[#AEAEB2]">
-                      loader
-                    </span>
-                  </div>
-
-                  <p className="mt-3 text-[13px] leading-6 text-[#6E6E73]">
-                    {description}
-                  </p>
-                </motion.div>
-              ))}
-            </div>
-
-            <div className="mt-4 flex flex-wrap items-center gap-2 border border-[#E5E5EA] px-5 py-4">
-              {["headings", "paragraphs", "tables", "images", "code"].map(
-                (item, index) => (
-                  <div key={item} className="flex items-center gap-2">
-                    <span className="border border-[#0071E3]/20 bg-[#0071E3]/[0.04] px-2.5 py-1 font-mono text-[10px] text-[#0071E3]">
-                      {item}
-                    </span>
-
-                    {index < 4 && (
-                      <span className="text-[#D2D2D7]">+</span>
-                    )}
-                  </div>
-                ),
-              )}
-
-              <span className="text-[#AEAEB2]">→</span>
-
-              <span className="bg-[#1D1D1F] px-2.5 py-1 font-mono text-[10px] text-white">
-                normalized chunk
-              </span>
-            </div>
-          </section>
-
-          {/* VERSUS */}
-          <section id="versus" className="scroll-mt-24">
-            <div className="max-w-2xl">
-              <div className="font-mono text-[10px] uppercase tracking-[0.18em] text-[#0071E3]">
-                04 / RAGX vs DIY
-              </div>
-
-              <h2 className="mt-3 text-3xl font-semibold tracking-[-0.04em]">
-                The details are the product.
-              </h2>
-
-              <p className="mt-3 text-[14px] leading-7 text-[#6E6E73]">
-                Building RAG isn't hard because embeddings are mysterious. It's
-                hard because real documents keep finding edge cases.
-              </p>
-            </div>
-
-            <div className="mt-8 border border-[#E5E5EA]">
-              {[
-                [
-                  "Tables split mid-row",
-                  "Naive splitters can destroy row relationships.",
-                  "Tables remain atomic chunks with their structure preserved.",
-                ],
-                [
-                  "Headers disappear",
-                  "A chunk loses the section that gives it meaning.",
-                  "Header paths travel with every chunk.",
-                ],
-                [
-                  "Scanned PDFs",
-                  "Text-only extraction returns empty content.",
-                  "OCR fallback handles pages without a usable text layer.",
-                ],
-                [
-                  "Model migration",
-                  "Changing embedding models can become an indexing project.",
-                  "Model metadata and vector dimensions are versioned.",
-                ],
-                [
-                  "API key sprawl",
-                  "One shared secret becomes difficult to rotate.",
-                  "Project-scoped keys can be created and revoked independently.",
-                ],
-                [
-                  "Missing provenance",
-                  "Generated answers can lose their original source.",
-                  "Retrieved chunks carry document, page, section and score.",
-                ],
-              ].map(([problem, oldWay, ragx], index) => (
-                <div
-                  key={problem}
-                  className={[
-                    "grid gap-5 px-5 py-5 lg:grid-cols-[1fr_1fr_1fr]",
-                    index > 0 ? "border-t border-[#E5E5EA]" : "",
-                  ].join(" ")}
-                >
-                  <p className="text-[13.5px] font-semibold">{problem}</p>
-
-                  <p className="text-[13px] leading-6 text-[#86868B]">
-                    {oldWay}
-                  </p>
-
-                  <div className="flex gap-2">
-                    <span className="mt-2 size-1.5 shrink-0 rounded-full bg-[#0071E3]" />
-
-                    <p className="text-[13px] leading-6">{ragx}</p>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </section>
-
-          {/* SECURITY */}
-          <section id="safety" className="scroll-mt-24">
-            <div className="max-w-2xl">
-              <div className="font-mono text-[10px] uppercase tracking-[0.18em] text-[#0071E3]">
-                05 / Security
-              </div>
-
-              <h2 className="mt-3 text-3xl font-semibold tracking-[-0.04em]">
-                Secrets should have a lifecycle.
-              </h2>
-
-              <p className="mt-3 text-[14px] leading-7 text-[#6E6E73]">
-                RAGX treats authentication and provider credentials as
-                infrastructure primitives, not UI fields.
-              </p>
-            </div>
-
-            <div className="mt-8 grid border border-[#E5E5EA] sm:grid-cols-2 lg:grid-cols-3">
-              {[
-                [
-                  "API keys",
-                  "SHA-256 hashed at rest. The raw secret is shown only at creation.",
-                ],
-                [
-                  "Passwords",
-                  "Argon2id hashing. No reversible password storage.",
-                ],
-                [
-                  "Sessions",
-                  "httpOnly cookies keep session credentials outside browser JavaScript.",
-                ],
-                [
-                  "Ownership",
-                  "Project and key operations verify the authenticated user.",
-                ],
-                [
-                  "Revocation",
-                  "Revoked keys retain lifecycle metadata and cannot be reused.",
-                ],
-                [
-                  "BYOK",
-                  "Provider credentials are treated as write-only secrets.",
-                ],
-              ].map(([title, description], index) => (
-                <div
-                  key={title}
-                  className={[
-                    "p-5",
-                    index > 0 ? "border-t border-[#E5E5EA]" : "",
-                    index % 3 !== 0 ? "lg:border-l" : "",
-                    index % 2 !== 0 ? "sm:border-l" : "",
-                  ].join(" ")}
-                >
-                  <div className="flex items-center gap-2">
-                    <Check className="size-3.5 text-[#0071E3]" strokeWidth={3} />
-                    <p className="text-[13.5px] font-semibold">{title}</p>
-                  </div>
-
-                  <p className="mt-2.5 text-[12.5px] leading-6 text-[#86868B]">
-                    {description}
-                  </p>
-                </div>
-              ))}
-            </div>
-
-            <div className="mt-4">
-              <Code
-                light
-                title="stored representation"
-                code={`"key":      "rgx_live_••••••••"   // preview
-"keyHash":  "sha256:9f2a…41bd"  // stored
-"rawKey":   null                 // never persisted`}
-              />
-            </div>
-          </section>
-
-          {/* CONCEPTS */}
-          <section id="concepts" className="scroll-mt-24">
-            <div className="max-w-2xl">
-              <div className="font-mono text-[10px] uppercase tracking-[0.18em] text-[#0071E3]">
-                06 / Concepts
-              </div>
-
-              <h2 className="mt-3 text-3xl font-semibold tracking-[-0.04em]">
-                Six primitives.
-              </h2>
-
-              <p className="mt-3 text-[14px] leading-7 text-[#6E6E73]">
-                Everything in the dashboard, API and SDK reduces to these
-                primitives.
-              </p>
-            </div>
-
-            <div className="mt-8 border border-[#E5E5EA]">
-              {[
-                ["Projects", "prj_…", "Isolated environments for documents, chunks and keys."],
-                ["Documents", "doc_…", "Source files parsed into structured content."],
-                ["Collections", "kb_…", "Knowledge bases that scope retrieval."],
-                ["Chunks", "ch_…", "Atomic retrieval units carrying their context."],
-                ["Embeddings", "384-dim", "Versioned vectors generated from chunk content."],
-                ["API keys", "rgx_live_…", "Project credentials with explicit lifecycle control."],
-              ].map(([title, tag, description], index) => (
-                <div
-                  key={title}
-                  className={[
-                    "group grid gap-3 px-5 py-4 transition-colors hover:bg-[#FAFAFA] sm:grid-cols-[160px_100px_1fr]",
-                    index > 0 ? "border-t border-[#E5E5EA]" : "",
-                  ].join(" ")}
-                >
-                  <p className="text-[13.5px] font-semibold">{title}</p>
-
-                  <span className="font-mono text-[10px] text-[#0071E3]">
-                    {tag}
-                  </span>
-
-                  <p className="text-[13px] leading-6 text-[#86868B]">
-                    {description}
-                  </p>
-                </div>
-              ))}
-            </div>
-          </section>
-
-          {/* API */}
-          <section id="api" className="scroll-mt-24">
-            <div className="flex flex-wrap items-end justify-between gap-5">
-              <div>
-                <div className="font-mono text-[10px] uppercase tracking-[0.18em] text-[#0071E3]">
-                  07 / API
-                </div>
-
-                <h2 className="mt-3 text-3xl font-semibold tracking-[-0.04em]">
-                  API reference.
-                </h2>
-
-                <p className="mt-3 font-mono text-[11px] text-[#86868B]">
-                  {BASE}
-                  <span className="mx-2 text-[#D2D2D7]">·</span>
-                  {routes.length}/{ROUTES.length} routes
-                </p>
-              </div>
-
-              <div className="flex h-8 items-center gap-2 border border-[#E5E5EA] px-3 sm:hidden">
-                <Search className="size-3.5 text-[#86868B]" />
-
-                <input
-                  value={filter}
-                  onChange={(event) => setFilter(event.target.value)}
-                  placeholder="Filter…"
-                  className="w-32 bg-transparent font-mono text-[11px] outline-none"
-                />
-              </div>
-            </div>
-
-            <div className="mt-8">
-              <Explorer routes={routes} />
-            </div>
-          </section>
-
-          {/* SDK */}
-          <section id="sdk" className="scroll-mt-24">
-            <div className="grid gap-10 lg:grid-cols-[0.8fr_1.2fr]">
-              <div>
-                <div className="font-mono text-[10px] uppercase tracking-[0.18em] text-[#0071E3]">
-                  08 / SDK
-                </div>
-
-                <h2 className="mt-3 text-3xl font-semibold tracking-[-0.04em]">
-                  Bring your model.
-                </h2>
-
-                <p className="mt-4 text-[14px] leading-7 text-[#6E6E73]">
-                  RAGX handles retrieval. Your application decides what model
-                  generates the final answer.
-                </p>
-
-                <div className="mt-7 space-y-5">
-                  <div>
-                    <p className="text-[13.5px] font-semibold">
-                      Retrieval + generation
-                    </p>
-
-                    <p className="mt-1.5 text-[13px] leading-6 text-[#86868B]">
-                      Use{" "}
-                      <code className="bg-[#F5F5F7] px-1 font-mono text-[11px]">
-                        ask()
-                      </code>{" "}
-                      when you want retrieval and provider generation in one
-                      operation.
-                    </p>
-                  </div>
-
-                  <div>
-                    <p className="text-[13.5px] font-semibold">
-                      BYOK
-                    </p>
-
-                    <p className="mt-1.5 text-[13px] leading-6 text-[#86868B]">
-                      Supply your provider credentials instead of coupling your
-                      application to another platform's model billing.
-                    </p>
-                  </div>
-                </div>
-              </div>
-
-              <Code
-                title="ask.ts"
-                code={`const ragx = new RAGX({
-  apiKey: process.env.RAGX_API_KEY,
-
-  llm: {
-    provider: "groq",
-    model: "llama-3.3-70b-versatile",
-    apiKey: process.env.GROQ_API_KEY,
+  embedding: {
+    provider: "mistral",
+    apiKey: process.env.MISTRAL_API_KEY,
+    model: "mistral-embed",
   },
 });
 
-const answer = await ragx.ask(
-  "Explain MVCC",
-  { topK: 5 }
-);`}
-              />
-            </div>
-          </section>
+const document = await ragx.documents.upload(
+  "./docs/postgres.pdf"
+);
+
+await ragx.documents.waitUntilReady(document.id);
+
+const results = await ragx.search(
+  "How does PostgreSQL MVCC work?"
+);
+
+console.log(results[0].text, results[0].score);`}</Code>
+          <UL>
+            <li><span className="font-mono text-[13px]">upload</span> parses, chunks, embeds and indexes the file.</li>
+            <li><span className="font-mono text-[13px]">waitUntilReady</span> polls until indexing finishes.</li>
+            <li><span className="font-mono text-[13px]">search</span> embeds the query and returns ranked chunks.</li>
+          </UL>
+
+          <H2 id="configuration">Configuration</H2>
+          <Code lang="ts">{`const ragx = new RAGX({
+  apiKey: process.env.RAGX_API_KEY,
+  embedding: {
+    provider: "mistral",
+    apiKey: process.env.MISTRAL_API_KEY,
+    model: "mistral-embed",
+  },
+});`}</Code>
+          <UL>
+            <li><span className="font-mono text-[13px]">apiKey</span> — your RAGX project key (<span className="font-mono text-[13px]">ragx_live_…</span>).</li>
+            <li><span className="font-mono text-[13px]">embedding.provider</span> — one of <span className="font-mono text-[13px]">"openai" | "mistral" | "gemini"</span>.</li>
+            <li><span className="font-mono text-[13px]">embedding.apiKey</span> — credential for that provider. Used for embeddings only.</li>
+            <li><span className="font-mono text-[13px]">embedding.model</span> — optional. Same model is used for indexing and query embedding.</li>
+            <li><span className="font-mono text-[13px]">baseUrl</span> — optional, defaults to <span className="font-mono text-[13px]">https://api.ragx.dev</span>.</li>
+          </UL>
+
+          <H2 id="environment">Environment Variables</H2>
+          <Code lang="bash">{`RAGX_API_KEY=ragx_live_...
+MISTRAL_API_KEY=...`}</Code>
+          <UL>
+            <li><span className="font-mono text-[13px]">RAGX_API_KEY</span> authenticates your application with RAGX.</li>
+            <li><span className="font-mono text-[13px]">MISTRAL_API_KEY</span> is sent to RAGX so it can call your embedding provider.</li>
+          </UL>
+          <P>
+            These are separate credentials. Store both in environment variables — never commit them,
+            never put them in URLs, never ship them to the browser.
+          </P>
+
+          <H2 id="commands">Common Commands</H2>
+          <P>RAGX has no CLI. These are the package/runtime commands you actually use in this repository:</P>
+          <Code lang="bash">{`bun install          # install dependencies
+bun dev              # run all apps (api + web + docs)
+bun run build        # production build
+bun run check-types  # typecheck
+bun run lint         # lint
+
+cd apps/api
+bun run db:migrate   # apply database migrations`}</Code>
+
+          <H2 id="upload">Upload Documents</H2>
+          <P>Upload one file. RAGX runs the pipeline:</P>
+          <Code lang="text">{`File
+  ↓
+RAGX
+  ↓
+Parsing
+  ↓
+Chunking
+  ↓
+Embeddings
+  ↓
+Vector Storage
+  ↓
+Ready`}</Code>
+          <Code lang="ts">{`const document = await ragx.documents.upload(
+  "./docs/postgres.pdf"
+);`}</Code>
+          <Code lang="json">{`{
+  "id": "doc_8f92",
+  "filename": "postgres.pdf",
+  "mimeType": "application/pdf",
+  "size": 2480128,
+  "status": "PROCESSING",
+  "chunks": 0,
+  "createdAt": "2026-10-02T12:00:00.000Z"
+}`}</Code>
+          <UL>
+            <li>Status moves <span className="font-mono text-[13px]">PENDING → PROCESSING → COMPLETED</span> (or <span className="font-mono text-[13px]">FAILED</span>).</li>
+            <li>Supported types: PDF, DOCX, HTML, TXT, CSV, Markdown.</li>
+          </UL>
+
+          <H2 id="upload-many">Multiple Documents</H2>
+          <Code lang="ts">{`const result = await ragx.uploadMany([
+  "./docs/postgres.pdf",
+  "./docs/transactions.md",
+  "./docs/indexing.pdf",
+]);`}</Code>
+          <Code lang="json">{`{
+  "documents": [
+    { "id": "doc_1", "filename": "postgres.pdf", "status": "PENDING" },
+    { "id": null, "filename": "transactions.md", "status": "FAILED", "error": "unsupported file type" }
+  ]
+}`}</Code>
+          <P>Each file has its own status and error. One failure does not fail the batch.</P>
+
+          <H2 id="documents-api">Document Management</H2>
+          <Code lang="ts">{`await ragx.documents.list();
+const doc = await ragx.documents.get("doc_8f92");
+await ragx.documents.delete("doc_8f92");
+await ragx.documents.waitUntilReady("doc_8f92");`}</Code>
+          <UL>
+            <li><span className="font-mono text-[13px]">list()</span> — all documents in the project.</li>
+            <li><span className="font-mono text-[13px]">get(id)</span> — one document, including status and chunk count.</li>
+            <li><span className="font-mono text-[13px]">delete(id)</span> — removes the document and its vectors.</li>
+            <li><span className="font-mono text-[13px]">waitUntilReady(id)</span> — polls until status is COMPLETED or FAILED.</li>
+          </UL>
+
+          <H2 id="search">Search</H2>
+          <Code lang="ts">{`const results = await ragx.search(
+  "How does PostgreSQL handle concurrent transactions?"
+);`}</Code>
+          <Code lang="text">{`Query
+  ↓
+Query Embedding
+  ↓
+Vector Search
+  ↓
+Top-K Results
+  ↓
+Relevant Context`}</Code>
+          <Code lang="json">{`[
+  {
+    "text": "PostgreSQL uses MVCC...",
+    "score": 0.94,
+    "documentId": "doc_8f92",
+    "chunkId": "ch_0042",
+    "page": 17
+  }
+]`}</Code>
+          <UL>
+            <li><span className="font-mono text-[13px]">text</span> — the retrieved chunk.</li>
+            <li><span className="font-mono text-[13px]">score</span> — similarity, higher is better.</li>
+            <li><span className="font-mono text-[13px]">documentId</span> / <span className="font-mono text-[13px]">chunkId</span> — provenance.</li>
+            <li><span className="font-mono text-[13px]">page</span> — source page when available.</li>
+          </UL>
+
+          <H2 id="search-options">Search Options</H2>
+          <Code lang="ts">{`const results = await ragx.search(
+  "How does MVCC work?",
+  { topK: 10, knowledgeBase: "kb_123" }
+);`}</Code>
+          <UL>
+            <li><span className="font-mono text-[13px]">topK</span> — number of chunks returned. Default 5.</li>
+            <li><span className="font-mono text-[13px]">knowledgeBase</span> — restrict search to one knowledge base.</li>
+          </UL>
+
+          <H2 id="knowledge-bases">Knowledge Bases</H2>
+          <P>A knowledge base groups documents. Search can be scoped to one.</P>
+          <Code lang="text">{`Knowledge Base
+ ├── postgres.pdf
+ ├── transactions.md
+ └── mvcc.md`}</Code>
+          <Code lang="ts">{`const kb = await ragx.knowledgeBases.create({
+  name: "PostgreSQL Documentation",
+});
+
+await ragx.knowledgeBases.addDocument(kb.id, document.id);
+
+const results = await ragx.search("How does MVCC work?", {
+  knowledgeBase: kb.id,
+});`}</Code>
+          <UL>
+            <li><span className="font-mono text-[13px]">create({"{ name, description? }"})</span></li>
+            <li><span className="font-mono text-[13px]">list()</span></li>
+            <li><span className="font-mono text-[13px]">get(id)</span></li>
+            <li><span className="font-mono text-[13px]">delete(id)</span></li>
+            <li><span className="font-mono text-[13px]">addDocument(kbId, documentId)</span></li>
+          </UL>
+
+          <H2 id="rag-application">Build a RAG Application</H2>
+          <Code lang="text">{`User Question
+      ↓
+ ragx.search()
+      ↓
+Relevant Context
+      ↓
+  Your LLM
+      ↓
+    Answer`}</Code>
+          <Code lang="ts">{`const results = await ragx.search(userQuestion);
+
+const context = results
+  .map((r) => r.text)
+  .join("\\n\\n");
+
+// Pass context to OpenAI, Anthropic, Gemini, Mistral, Ollama…
+// Generation stays in your application. RAGX only returns the context.`}</Code>
+
+          <H2 id="mistral">Mistral Embeddings</H2>
+          <Code lang="ts">{`const ragx = new RAGX({
+  apiKey: process.env.RAGX_API_KEY,
+  embedding: {
+    provider: "mistral",
+    apiKey: process.env.MISTRAL_API_KEY,
+    model: "mistral-embed",
+  },
+});`}</Code>
+          <P>
+            The embedding provider (Mistral here) is independent from your generation provider.
+            You can embed with Mistral and generate with any other LLM.
+          </P>
+
+          <H2 id="authentication">Authentication</H2>
+          <P>Every API call sends two headers:</P>
+          <Code lang="text">{`Authorization: Bearer <RAGX_API_KEY>
+X-Provider: mistral
+X-Provider-Key: <EMBEDDING_PROVIDER_KEY>
+X-Provider-Model: mistral-embed   # optional`}</Code>
+          <UL>
+            <li>Get your API key from the RAGX dashboard.</li>
+            <li>Store it in <span className="font-mono text-[13px]">RAGX_API_KEY</span>.</li>
+            <li>The SDK sets these headers for you on every request.</li>
+          </UL>
+
+          <H2 id="api-documents">API — Documents</H2>
+          <Method m="POST" path="/v1/documents" />
+          <Code lang="json">{`// request
+{ "name": "postgres.pdf", "mimeType": "application/pdf", "contentBase64": "..." }
+
+// response
+{ "id": "doc_8f92", "filename": "postgres.pdf", "status": "PENDING", "chunks": 0, "size": 2480128, "mimeType": "application/pdf", "createdAt": "..." }`}</Code>
+          <Method m="POST" path="/v1/documents/batch" />
+          <Code lang="json">{`// request
+{ "files": [{ "filename": "postgres.pdf", "contentBase64": "..." }] }
+
+// response
+{ "documents": [{ "id": "doc_8f92", "filename": "postgres.pdf", "status": "PENDING" }] }`}</Code>
+          <Method m="GET" path="/v1/documents" />
+          <Method m="GET" path="/v1/documents/:documentId" />
+          <Method m="DELETE" path="/v1/documents/:documentId" />
+
+          <H2 id="api-search">API — Search</H2>
+          <Method m="POST" path="/v1/search" />
+          <Code lang="json">{`// request
+{ "query": "How does PostgreSQL MVCC work?", "topK": 5, "knowledgeBase": "kb_123" }
+
+// response
+{ "results": [{ "text": "...", "score": 0.94, "documentId": "doc_8f92", "chunkId": "ch_0042", "page": 17 }] }`}</Code>
+          <Method m="POST" path="/v1/ask" />
+          <Code lang="json">{`// request
+{ "query": "How does PostgreSQL MVCC work?" }
+
+// response
+{ "answer": "...", "results": [ ... ] }`}</Code>
+
+          <H2 id="api-knowledge-bases">API — Knowledge Bases</H2>
+          <Method m="POST" path="/v1/knowledge-bases" />
+          <Code lang="json">{`// request
+{ "name": "PostgreSQL Documentation" }
+
+// response
+{ "id": "kb_123", "name": "PostgreSQL Documentation", "description": null }`}</Code>
+          <Method m="GET" path="/v1/knowledge-bases" />
+          <Method m="GET" path="/v1/knowledge-bases/:knowledgeBaseId" />
+          <Method m="DELETE" path="/v1/knowledge-bases/:knowledgeBaseId" />
+          <Method m="POST" path="/v1/knowledge-bases/:knowledgeBaseId/documents" />
+          <Code lang="json">{`// request
+{ "documentId": "doc_8f92" }`}</Code>
+
+          <H2 id="errors">Errors</H2>
+          <UL>
+            <li><span className="font-mono text-[13px]">401</span> — missing or invalid API key. Check <span className="font-mono text-[13px]">Authorization: Bearer …</span>.</li>
+            <li><span className="font-mono text-[13px]">400</span> — invalid request body. The error message names the field.</li>
+            <li><span className="font-mono text-[13px]">404</span> — document or knowledge base not found.</li>
+            <li>Document <span className="font-mono text-[13px]">status: "FAILED"</span> — the pipeline could not process the file. Common cause: unsupported type or embedding failure. Re-upload after fixing the input.</li>
+          </UL>
         </article>
+
+        {/* On this page */}
+        <aside className="sticky top-20 hidden h-[calc(100vh-5rem)] overflow-y-auto pb-10 xl:block">
+          <p className="font-mono text-[10.5px] uppercase tracking-[0.14em] text-[#6E6E73]">On this page</p>
+          <ul className="mt-3 space-y-1.5 text-[13px]">
+            {ALL_SECTIONS.map((s) => (
+              <li key={s.id}>
+                <a
+                  href={`#${s.id}`}
+                  className={active === s.id ? "text-[#0071E3]" : "text-[#6E6E73] hover:text-[#1D1D1F]"}
+                >
+                  {s.label}
+                </a>
+              </li>
+            ))}
+          </ul>
+        </aside>
       </div>
-
-      {/* FOOTER */}
-      <footer className="border-t border-[#E5E5EA]">
-        <div className="mx-auto flex max-w-7xl flex-col gap-4 px-5 py-8 sm:flex-row sm:items-center sm:justify-between sm:px-8">
-          <div className="flex items-center gap-2">
-            <LogoMark size={18} />
-            <span className="text-[12px] font-semibold">RAGX</span>
-          </div>
-
-          <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-[#AEAEB2]">
-            retrieval infrastructure
-          </p>
-        </div>
-      </footer>
     </main>
   );
 }

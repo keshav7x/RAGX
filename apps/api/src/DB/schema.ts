@@ -5,7 +5,7 @@
 // references object storage (binaries never live in Postgres); vectors
 // live in `document_chunk.embedding` (JSONB, ranked in-JS) until the
 // pgvector migration lands behind the VectorStore abstraction.
-import { index, integer, jsonb, pgTable, text, timestamp, uuid, varchar } from "drizzle-orm/pg-core";
+import { index, integer, jsonb, pgTable, text, timestamp, unique, uuid, varchar } from "drizzle-orm/pg-core";
 
 
 
@@ -152,4 +152,39 @@ export const documentChunkTable = pgTable("document_chunk",{
 },(table)=>[
     index("document_chunk_project_idx").on(table.projectId),
     index("document_chunk_document_idx").on(table.documentId),
+])
+
+export const knowledgeBaseTable = pgTable("knowledge_base",{
+    id: uuid("id").defaultRandom().primaryKey(),
+    projectId:uuid("project_id").notNull().references(()=>projectTable.id,{
+        onDelete:"cascade"
+    }),
+    name:varchar({length:100}).notNull(),
+    description:varchar({length:500}),
+    createdAt: timestamp("created_at")
+    .defaultNow()
+    .notNull(),
+
+    updatedAt: timestamp("updated_at")
+    .defaultNow()
+    .notNull(),
+},(table)=>[
+    index("knowledge_base_project_idx").on(table.projectId),
+])
+
+export const knowledgeBaseDocumentTable = pgTable("knowledge_base_document",{
+    id: uuid("id").defaultRandom().primaryKey(),
+    knowledgeBaseId:uuid("knowledge_base_id").notNull().references(()=>knowledgeBaseTable.id,{
+        onDelete:"cascade"
+    }),
+    documentId:uuid("document_id").notNull().references(()=>documentTable.id,{
+        onDelete:"cascade"
+    }),
+    createdAt: timestamp("created_at")
+    .defaultNow()
+    .notNull(),
+},(table)=>[
+    index("knowledge_base_document_kb_idx").on(table.knowledgeBaseId),
+    index("knowledge_base_document_doc_idx").on(table.documentId),
+    unique("knowledge_base_document_unique").on(table.knowledgeBaseId, table.documentId),
 ])

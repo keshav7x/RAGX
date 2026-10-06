@@ -118,9 +118,24 @@ export function isHttpError(error: unknown): error is HttpError {
   return error instanceof HttpError;
 }
 
+/**
+ * Body-parser limit errors (e.g. `entity.too.large`) are plain Errors with
+ * a `status`/`type` shape, not `HttpError`s. Detect them centrally so an
+ * oversized upload or batch surfaces as a clean 413 instead of a 500 —
+ * without any route touching body-parser internals.
+ */
+export function isPayloadTooLargeError(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  const record = error as Record<string, unknown>;
+  return record["status"] === 413 || record["type"] === "entity.too.large";
+}
+
 export function getStatusCode(error: unknown, fallback = 500): number {
   if (error instanceof HttpError) {
     return error.statusCode;
+  }
+  if (isPayloadTooLargeError(error)) {
+    return 413;
   }
   return fallback;
 }
@@ -128,6 +143,11 @@ export function getStatusCode(error: unknown, fallback = 500): number {
 export function getErrorMessage(error: unknown, fallback: string): string {
   if (error instanceof HttpError) {
     return error.message;
+  }
+  if (isPayloadTooLargeError(error)) {
+    // Static message: the parser error carries limits, never content —
+    // and there is nothing to gain from logging it.
+    return "Request body too large.";
   }
   if (error instanceof Error) {
     //! Never forward raw provider/DB messages to clients — they may

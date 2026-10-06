@@ -13,12 +13,16 @@ export const config = [
   js.configs.recommended,
   eslintConfigPrettier,
   {
+    files: ["**/*.{js,cjs,mjs,jsx,ts,tsx,mts,cts}"],
     languageOptions: {
       parser: babelParser,
       parserOptions: {
         requireConfigFile: false,
         babelOptions: {
-          presets: ["@babel/preset-typescript"],
+          parserOpts: {
+            sourceType: "module",
+            plugins: ["typescript", "jsx"],
+          },
         },
       },
     },
@@ -27,6 +31,8 @@ export const config = [
     },
     rules: {
       "turbo/no-undeclared-env-vars": "warn",
+      "no-undef": "off",
+      "no-unused-vars": "off",
     },
   },
   {

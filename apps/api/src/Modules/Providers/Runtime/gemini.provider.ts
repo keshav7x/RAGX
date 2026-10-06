@@ -26,10 +26,14 @@ async function post(
       body: JSON.stringify(body),
     });
   } catch {
-    throw new ProviderUpstreamError(provider, "unreachable");
+    throw new ProviderUpstreamError(provider, "unreachable", {
+      retryable: true,
+    });
   }
   if (!res.ok) {
-    throw new ProviderUpstreamError(provider, `status ${res.status}`);
+    throw new ProviderUpstreamError(provider, `status ${res.status}`, {
+      status: res.status,
+    });
   }
   try {
     return (await res.json()) as unknown;

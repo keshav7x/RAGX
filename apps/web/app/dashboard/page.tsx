@@ -28,7 +28,7 @@ const RECENT_QUERIES = [
 
 const QUICK_LINKS = [
   { label: "Upload documents", href: "/dashboard/documents" },
-  { label: "Open playground", href: "/dashboard/search" },
+  { label: "Search knowledge", href: "/dashboard/search" },
   { label: "Project settings", href: "/dashboard/settings" },
   { label: "Read the docs", href: "/docs" },
 ];
@@ -209,7 +209,7 @@ export default function OverviewPage() {
               href="/dashboard/search"
               className="text-[13px] text-[#6E6E73] transition-colors hover:text-[#1D1D1F]"
             >
-              Playground
+              Search
             </Link>
           </div>
           <div className="mt-3 rounded-lg border border-[#E8E8ED] bg-[#FAFAFA]/50 font-mono text-xs">

@@ -8,7 +8,7 @@
 // WHY one package: API, SDK, and (eventually) web must agree on `Document`
 // / `SearchResult` / `AskResult` wire shapes. Duplicating them per app
 // caused the `collections`/`kb_*` drift documented in the web audit.
-export * from "./ragx.types.ts";
-export * from "./project.types.ts";
-export * from "./provider.types.ts";
-export * from "./llm.types.ts";
+export * from "./ragx.types.js";
+export * from "./project.types.js";
+export * from "./provider.types.js";
+export * from "./llm.types.js";

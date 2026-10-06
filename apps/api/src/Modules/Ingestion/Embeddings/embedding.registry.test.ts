@@ -1,6 +1,12 @@
 import { describe, expect, it } from "bun:test";
 
-import { createEmbeddingProvider } from "./embedding.registry";
+import { ProviderUpstreamError } from "../../Providers/Runtime/provider";
+import {
+  DEFAULT_EMBED_BASE_DELAY_MS,
+  createEmbeddingProvider,
+  embedTextsBatched,
+} from "./embedding.registry";
+import type { EmbeddingProvider } from "./embedding.types";
 
 const KEY = "sk-test-key";
 
@@ -137,5 +143,139 @@ describe("embedding registry", () => {
 
     expect(authOf(stub.seen[0]!.init)).toBe("Bearer sk-first");
     expect(authOf(stub.seen[1]!.init)).toBe("Bearer sk-second");
+  });
+});
+
+describe("batched embedding", () => {
+  function scriptedProvider(
+    script: (call: { texts: string[]; attempt: number }) => Promise<number[][]>,
+    onCall?: (texts: string[]) => void,
+  ): EmbeddingProvider & { calls: string[][] } {
+    const calls: string[][] = [];
+    return {
+      calls,
+      embed: async (texts: string[]) => {
+        calls.push([...texts]);
+        onCall?.(texts);
+        return script({ texts, attempt: calls.length });
+      },
+    };
+  }
+
+  function retryable429(): ProviderUpstreamError {
+    return new ProviderUpstreamError("openai", "status 429", { status: 429 });
+  }
+
+  it("windows large inputs preserving order", async () => {
+    const provider = scriptedProvider(async ({ texts }) =>
+      texts.map((t) => [Number(t.slice(1))]),
+    );
+    const texts = Array.from({ length: 70 }, (_, i) => `t${i}`);
+
+    const vectors = await embedTextsBatched(provider, texts, 32, {
+      sleep: async () => undefined,
+    });
+
+    expect(provider.calls.map((c) => c.length)).toEqual([32, 32, 6]);
+    expect(vectors).toEqual(texts.map((_, i) => [i]));
+  });
+
+  it("returns [] for empty input without calling the provider", async () => {
+    const provider = scriptedProvider(async (call) => {
+      throw new Error(`must not be called: ${JSON.stringify(call.texts)}`);
+    });
+    expect(await embedTextsBatched(provider, [], 32)).toEqual([]);
+    expect(provider.calls).toHaveLength(0);
+  });
+
+  it("fails fast when the provider drops inputs", async () => {
+    const provider = scriptedProvider(async () => [[1]]);
+    await expect(
+      embedTextsBatched(provider, ["a", "b"], 32, {
+        sleep: async () => undefined,
+      }),
+    ).rejects.toThrowError(/does not match chunk count/);
+    expect(provider.calls).toHaveLength(1);
+  });
+
+  it("retries transient rate limits with exponential backoff", async () => {
+    const sleeps: number[] = [];
+    let attempts = 0;
+    const provider = scriptedProvider(async () => {
+      attempts += 1;
+      if (attempts <= 2) throw retryable429();
+      return [[0.1]];
+    });
+
+    const vectors = await embedTextsBatched(provider, ["a"], 32, {
+      sleep: async (ms) => {
+        sleeps.push(ms);
+      },
+    });
+
+    expect(vectors).toEqual([[0.1]]);
+    expect(attempts).toBe(3);
+    expect(sleeps).toEqual([
+      DEFAULT_EMBED_BASE_DELAY_MS,
+      DEFAULT_EMBED_BASE_DELAY_MS * 2,
+    ]);
+  });
+
+  it("gives up after max attempts on persistent rate limits", async () => {
+    const sleeps: number[] = [];
+    const provider = scriptedProvider(async () => {
+      throw retryable429();
+    });
+
+    await expect(
+      embedTextsBatched(provider, ["a"], 32, {
+        sleep: async (ms) => {
+          sleeps.push(ms);
+        },
+      }),
+    ).rejects.toBeInstanceOf(ProviderUpstreamError);
+    expect(provider.calls).toHaveLength(3);
+    expect(sleeps).toHaveLength(2);
+  });
+
+  it("never retries credential or validation failures", async () => {
+    const sleeps: number[] = [];
+    const unauthorized = scriptedProvider(async () => {
+      throw new ProviderUpstreamError("openai", "status 401", { status: 401 });
+    });
+    await expect(
+      embedTextsBatched(unauthorized, ["a"], 32, {
+        sleep: async (ms) => {
+          sleeps.push(ms);
+        },
+      }),
+    ).rejects.toBeInstanceOf(ProviderUpstreamError);
+    expect(unauthorized.calls).toHaveLength(1);
+
+    const malformed = scriptedProvider(async () => {
+      throw new ProviderUpstreamError("openai", "invalid response");
+    });
+    await expect(
+      embedTextsBatched(malformed, ["a"], 32, {
+        sleep: async (ms) => {
+          sleeps.push(ms);
+        },
+      }),
+    ).rejects.toBeInstanceOf(ProviderUpstreamError);
+    expect(malformed.calls).toHaveLength(1);
+    expect(sleeps).toHaveLength(0);
+  });
+
+  it("honors maxAttempts: 1 as no retry", async () => {
+    const provider = scriptedProvider(async () => {
+      throw retryable429();
+    });
+    await expect(
+      embedTextsBatched(provider, ["a"], 32, {
+        maxAttempts: 1,
+        sleep: async () => undefined,
+      }),
+    ).rejects.toBeInstanceOf(ProviderUpstreamError);
+    expect(provider.calls).toHaveLength(1);
   });
 });

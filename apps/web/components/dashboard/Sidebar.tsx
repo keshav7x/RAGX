@@ -72,7 +72,7 @@ export function Sidebar() {
       <Link href="/dashboard" className="flex items-center gap-2 px-2.5 pb-4">
         <LogoMark size={24} />
         <span className="text-[15px] font-semibold tracking-tight">RAGX</span>
-        <span className="pulse-dot ml-1 size-1.5 rounded-full bg-[#0071E3]" aria-hidden />
+        <span className="ml-1 size-1.5 rounded-full bg-[#0071E3]" aria-hidden />
       </Link>
       <nav className="flex-1 space-y-5 overflow-y-auto">
         {SECTIONS.map((s) => (

@@ -22,6 +22,12 @@ export interface VectorPoint {
   text: string;
   documentId: string;
   page?: number;
+  /**
+   * Caller-supplied metadata merged into the stored row (service values
+   * win over driver defaults). Carries chunkIndex, kind, headerPath,
+   * and embedding provenance for retrieval and debugging.
+   */
+  metadata?: Record<string, unknown>;
 }
 
 export interface VectorSearchHit {
@@ -30,6 +36,7 @@ export interface VectorSearchHit {
   text: string;
   documentId: string;
   page?: number;
+  metadata?: Record<string, unknown>;
 }
 
 /**
@@ -40,4 +47,6 @@ export interface VectorStoreClient {
   readonly provider: string;
   upsert(points: VectorPoint[]): Promise<void>;
   search(vector: number[], topK: number): Promise<VectorSearchHit[]>;
+  /** Remove every vector belonging to one document (retry/delete path). */
+  deleteByDocument(documentId: string): Promise<void>;
 }

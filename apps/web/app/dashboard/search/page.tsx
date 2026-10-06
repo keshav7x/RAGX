@@ -48,14 +48,14 @@ export default function SearchPage() {
             {phase === "searching" ? <Loader2 className="size-4 animate-spin" /> : "Retrieve"}
           </button>
         </div>
-        {/* traveling line */}
+        {/* progress line */}
         <div className="relative h-[2px] bg-[#F5F5F7]">
           {phase === "searching" && (
             <motion.span
-              initial={{ x: "-30%" }}
-              animate={{ x: "350%" }}
-              transition={{ duration: 1, repeat: Infinity, ease: "easeInOut" }}
-              className="absolute left-0 top-0 h-full w-[30%] bg-[#0071E3]"
+              initial={{ width: "0%" }}
+              animate={{ width: "100%" }}
+              transition={{ duration: 1.1, ease: "easeInOut" }}
+              className="absolute left-0 top-0 h-full bg-[#0071E3]"
             />
           )}
         </div>
@@ -85,6 +85,11 @@ export default function SearchPage() {
       <p className="mt-8 font-mono text-[11px] uppercase tracking-[0.12em] text-[#6E6E73]">
         {phase === "searching" ? "Searching…" : "Retrieval results"}
       </p>
+      {activeFilters.includes("Collection") && (
+        <p className="mt-1 font-mono text-[11px] text-[#6E6E73]">
+          Scoped to <span className="text-[#0071E3]">kb_postgresql_docs</span> · retrieval is collection-scoped
+        </p>
+      )}
       <div className="mt-3 space-y-2.5" key={run}>
         {phase === "searching"
           ? [0, 1].map((i) => (

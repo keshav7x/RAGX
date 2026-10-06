@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import { HttpError, NotFoundError } from "@/Utils/httpError";
+import { BadRequestError, HttpError, NotFoundError } from "@/Utils/httpError";
 
 import { toStructuredDocument } from "../../Ingestion/Document/adapters";
 import {
@@ -9,6 +9,11 @@ import {
 } from "../../Ingestion/Embeddings/embedding.registry";
 import { DocumentEmptyError } from "../../Ingestion/Errors/document.errors";
 import { structuredChunk } from "../../Ingestion/Chunking/structured.chunking";
+import { createVectorStore } from "../../Ingestion/VectorStore/vector-store.registry";
+// Side-effect import: self-registers the "pgvector"/"postgres" JSONB
+// driver so `createVectorStore` resolves without services naming a
+// concrete class.
+import "../../Ingestion/VectorStore/postgres-jsonb.vector-store";
 import {
   detectMimeType,
   ingestDocument,
@@ -37,6 +42,7 @@ const EMBED_BATCH_SIZE = 32;
 export interface ProviderHeaders {
   providerName?: unknown;
   providerKey?: unknown;
+  providerModel?: unknown;
 }
 
 export interface UploadFileInput {
@@ -80,6 +86,20 @@ function safeFailureMessage(error: unknown): string {
   if (error instanceof HttpError) return error.message;
   return "Document processing failed";
 }
+
+/**
+ * Filenames are client-controlled metadata (stored, returned, and logged
+ * in ingestion stats). Strip ASCII control characters to block log
+ * forging and control-char smuggling; length is capped to the schema
+ * width so overlong names fail fast instead of DB-erroring. The object
+ * key never contains the filename (UUID-scoped), so traversal via names
+ * cannot reach storage.
+ */
+function sanitizeFileName(rawName: string): string {
+  return rawName.trim().replace(/[\x00-\x1F\x7F]/g, "");
+}
+
+const MAX_FILENAME_LENGTH = 200;
 
 function decodeContent(contentBase64: string): Buffer {
   if (!contentBase64 || contentBase64.length === 0) {
@@ -170,9 +190,12 @@ export class DocumentService {
     input: { name: string; mimeType?: string; contentBase64: string },
     providerHeaders: ProviderHeaders = {},
   ): Promise<Document> {
-    const fileName = input.name.trim();
+    const fileName = sanitizeFileName(input.name);
     if (!fileName) {
       throw new DocumentEmptyError("Document name is required");
+    }
+    if (fileName.length > MAX_FILENAME_LENGTH) {
+      throw new BadRequestError("Document name is too long");
     }
     const buffer = decodeContent(input.contentBase64);
     const mimeType = detectMimeType(fileName, input.mimeType);
@@ -231,7 +254,9 @@ export class DocumentService {
     const documents: BatchDocumentSummary[] = [];
 
     for (const file of files) {
-      const filename = file.filename?.trim() || "document";
+      // Sanitized here too so FAILED summaries never echo control
+      // characters back to the caller.
+      const filename = sanitizeFileName(file.filename ?? "") || "document";
       try {
         const doc = await this.upload(
           projectId,
@@ -338,22 +363,40 @@ export class DocumentService {
       assertValidEmbeddings(vectors, chunks.length);
       const embeddingDimensions = vectors[0]!.length;
 
+      // Vector persistence goes through the store abstraction — never a
+      // concrete database. The client is project-scoped at creation, so
+      // reads and writes cannot leak across tenants.
+      const vectorStore = await createVectorStore(
+        { provider: "pgvector" },
+        {
+          projectId,
+          listChunks: (pid) =>
+            this.documentRepository.listChunksByProject(pid),
+          chunksStore: this.documentRepository,
+        },
+      );
+
       // Idempotent retry: a previous attempt may have written rows before
       // failing at markCompleted (or the job was requeued after a crash).
-      // Clearing this document's chunks first guarantees no duplicates.
-      // Ownership was already verified via findById above.
-      await this.documentRepository.deleteChunksByDocument(documentId);
-      await this.documentRepository.insertChunks(
+      // Clearing this document's vectors first guarantees no duplicates.
+      // Ownership was already verified via findById above. Deletion and
+      // upsert both run AFTER successful embedding, so an embedding
+      // failure can never wipe already-indexed chunks.
+      await vectorStore.deleteByDocument(documentId);
+      await vectorStore.upsert(
         chunks.map((chunk, i) => ({
-          documentId,
-          projectId,
-          page: chunk.page,
+          id: `${documentId}:chunk-${i}`,
+          vector: vectors[i]!,
           text: chunk.text,
-          embedding: vectors[i]!,
+          documentId,
+          page: chunk.page,
           metadata: {
             page: chunk.page,
             chunkIndex: i,
             kind: chunk.kind,
+            // Section context: preserved from parse → clean → chunk so
+            // retrieval context keeps its headings without re-parsing.
+            headerPath: chunk.headerPath,
             provider: resolved.provider,
             embeddingModel: resolved.embeddingModel,
             embeddingDimensions,
@@ -422,8 +465,10 @@ export class DocumentService {
   ): Promise<number[][]> {
     // One embedding configuration for the whole upload, built through
     // the registry — ingestion never configures providers itself.
-    // NOTE: windowing policy lives in `embedTextsBatched` (shared with
-    // future callers) so batch-size changes apply everywhere at once.
+    // NOTE: windowing + retry policy lives in `embedTextsBatched` (shared
+    // with future callers) so batch-size changes apply everywhere at once.
+    // Retries reuse this same instance/key/model: no provider or model
+    // switching on failure, ever.
     const embedding = createEmbeddingProvider(
       resolved.provider,
       resolved.apiKey,

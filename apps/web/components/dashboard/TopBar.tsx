@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { AnimatePresence, motion } from "framer-motion";
 import { ArrowRight, FileText, KeyRound, Plus, Search } from "lucide-react";
 import { usePathname, useRouter } from "next/navigation";
@@ -19,9 +20,11 @@ const ACTIONS = [
 export function CommandPalette({ open, onClose }: { open: boolean; onClose: () => void }) {
   const [q, setQ] = useState("");
   const router = useRouter();
-  useEffect(() => {
+  const [prevOpen, setPrevOpen] = useState(open);
+  if (open !== prevOpen) {
+    setPrevOpen(open);
     if (open) setQ("");
-  }, [open ]);
+  }
   const filtered = ACTIONS.filter((a) => a.label.toLowerCase().includes(q.toLowerCase()));
   return (
     <AnimatePresence>
@@ -134,12 +137,12 @@ export function TopBar({ onPalette }: { onPalette: () => void }) {
         >
           <Search className="size-4" />
         </button>
-        <a
+        <Link
           href="/dashboard/documents"
           className="flex items-center gap-1.5 rounded-lg bg-[#1D1D1F] px-3 py-1.5 text-[13px] font-medium text-white transition-colors hover:bg-black"
         >
           <Plus className="size-4" /> <span className="hidden sm:inline">Create</span>
-        </a>
+        </Link>
       </div>
     </div>
   );

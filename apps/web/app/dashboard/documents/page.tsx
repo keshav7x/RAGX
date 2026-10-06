@@ -46,7 +46,7 @@ function StatusBadge({ status }: { status: DocumentStatus }) {
   return (
     <span className="flex items-center gap-2 text-[13px]">
       <span className="relative flex size-1.5" aria-label="processing">
-        <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#0071E3] opacity-60" />
+        <span className="absolute inline-flex h-full w-full rounded-full bg-[#0071E3] opacity-25" />
         <span className="relative inline-flex size-1.5 rounded-full bg-[#0071E3]" />
       </span>
       {status === "PENDING" ? "Pending" : "Processing"}
@@ -98,10 +98,12 @@ export default function DocumentsPage() {
   }, []);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     void loadProjects().finally(() => setLoading(false));
   }, [loadProjects]);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     if (projectId) void loadDocuments(projectId);
     else setDocuments([]);
   }, [projectId, loadDocuments]);

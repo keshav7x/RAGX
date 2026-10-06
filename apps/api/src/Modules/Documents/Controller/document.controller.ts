@@ -20,6 +20,7 @@ function providerHeaders(req: Request): ProviderHeaders {
   return {
     providerName: req.headers["x-provider"],
     providerKey: req.headers["x-provider-key"],
+    providerModel: req.headers["x-provider-model"],
   };
 }
 
@@ -371,6 +372,7 @@ export class DocumentController {
         parsed.data.query,
         parsed.data.topK,
         providerHeaders(req),
+        { knowledgeBaseId: parsed.data.knowledgeBase },
       );
 
       return res.status(200).json({
@@ -409,6 +411,7 @@ export class DocumentController {
         parsed.data.query,
         parsed.data.topK,
         providerHeaders(req),
+        { knowledgeBaseId: parsed.data.knowledgeBase },
       );
 
       return res.status(200).json({

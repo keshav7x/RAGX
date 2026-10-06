@@ -28,5 +28,18 @@ export async function embedSingle(
   return vector;
 }
 
+/**
+ * Normalized single-query embedding: the `embedQuery` half of the
+ * provider contract (`embedDocuments` is `embed` / `embedTextsBatched`).
+ * Same batched path as ingestion, so indexing and query vectors always
+ * share provider, model, and call semantics.
+ */
+export async function embedQuery(
+  provider: EmbeddingProvider,
+  text: string,
+): Promise<number[]> {
+  return embedSingle(provider, text);
+}
+
 /** Batching guard shared by ingestion and retrieval paths. */
 export const DEFAULT_EMBED_BATCH_SIZE = 32;

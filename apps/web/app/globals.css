@@ -53,19 +53,3 @@ body {
   background: rgba(255, 255, 255, 0.15);
   border-radius: 8px;
 }
-
-@keyframes pulse-dot {
-  0%, 100% { opacity: 1; transform: scale(1); }
-  50% { opacity: 0.45; transform: scale(0.8); }
-}
-.pulse-dot {
-  animation: pulse-dot 2s ease-in-out infinite;
-}
-
-@keyframes flow-dash {
-  to { stroke-dashoffset: -12; }
-}
-.flow-line {
-  stroke-dasharray: 5 7;
-  animation: flow-dash 1.2s linear infinite;
-}

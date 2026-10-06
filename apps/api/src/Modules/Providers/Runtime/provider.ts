@@ -19,8 +19,27 @@ export interface RAGXProvider {
 }
 
 export class ProviderUpstreamError extends HttpError {
-  constructor(provider: string, detail = "Provider request failed") {
+  /** HTTP status when the provider answered (undefined for network/parse failures). */
+  readonly status?: number;
+  /**
+   * Whether retrying the same request (same provider, key, model) may
+   * succeed: rate limits (429), server errors (5xx), and unreachable
+   * transports. Auth/validation failures (4xx) and malformed responses
+   * must fail fast instead of looping.
+   */
+  readonly retryable: boolean;
+
+  constructor(
+    provider: string,
+    detail = "Provider request failed",
+    options: { status?: number; retryable?: boolean } = {},
+  ) {
     super(502, `${provider} request failed: ${detail}`);
+    this.status = options.status;
+    this.retryable =
+      options.retryable ??
+      (options.status !== undefined &&
+        (options.status === 429 || options.status >= 500));
   }
 }
 
@@ -29,7 +48,9 @@ export async function readJsonResponse(
   res: Response,
 ): Promise<unknown> {
   if (!res.ok) {
-    throw new ProviderUpstreamError(provider, `status ${res.status}`);
+    throw new ProviderUpstreamError(provider, `status ${res.status}`, {
+      status: res.status,
+    });
   }
   try {
     return (await res.json()) as unknown;
@@ -52,6 +73,8 @@ export function postJson(
     },
     body: JSON.stringify(body),
   }).catch(() => {
-    throw new ProviderUpstreamError(provider, "unreachable");
+    throw new ProviderUpstreamError(provider, "unreachable", {
+      retryable: true,
+    });
   });
 }

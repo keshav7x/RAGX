@@ -2,14 +2,89 @@
 
 import { useState } from "react";
 import { motion } from "framer-motion";
-import { Check, Trash2 } from "lucide-react";
+import { Check, Copy, KeyRound, Trash2 } from "lucide-react";
 import { PageHead } from "../../../components/dashboard/ui";
 
-const NAV = ["General", "Retrieval"] as const;
+const NAV = ["General", "Retrieval", "API Keys"] as const;
 type Tab = (typeof NAV)[number];
 
 const inputCls =
   "w-full rounded-md border border-[#E8E8ED] bg-white px-3 py-2 text-[14px] outline-none transition-colors focus:border-[#1D1D1F]";
+
+const API_KEYS = [
+  { id: "k1", name: "Production", preview: "rgx_live_9f2a…b41c", created: "Sep 25, 2026", lastUsed: "2 min ago" },
+  { id: "k2", name: "Staging", preview: "rgx_test_77e0…03ad", created: "Sep 12, 2026", lastUsed: "1 h ago" },
+];
+
+const PROVIDERS = [
+  { name: "Mistral", field: "Embedding provider", state: "Connected · mistral-embed" },
+  { name: "OpenAI", field: "Embedding provider", state: "Not connected" },
+];
+
+function ApiKeysTab() {
+  const [copied, setCopied] = useState<string | null>(null);
+  return (
+    <div>
+      <h2 className="text-[17px] font-semibold">API Keys</h2>
+      <p className="mt-1 text-[13px] text-[#6E6E73]">
+        RAGX API keys authenticate your application against the retrieval API. Embedding provider credentials are stored separately, server-side.
+      </p>
+
+      <div className="mt-4 rounded-lg border border-[#E8E8ED]">
+        <div className="flex items-center justify-between border-b border-[#E8E8ED] px-5 py-3.5">
+          <p className="flex items-center gap-2 text-[14px] font-medium">
+            <KeyRound className="size-4 text-[#6E6E73]" /> RAGX API keys
+          </p>
+          <button className="rounded-md bg-[#1D1D1F] px-3 py-1.5 text-[12.5px] font-medium text-white">
+            Create key
+          </button>
+        </div>
+        {API_KEYS.map((k, i) => (
+          <div key={k.id} className={`flex flex-wrap items-center justify-between gap-3 px-5 py-3.5 ${i > 0 ? "border-t border-[#E8E8ED]" : ""}`}>
+            <div>
+              <p className="text-[14px] font-medium">{k.name}</p>
+              <p className="mt-0.5 font-mono text-[12px] text-[#6E6E73]">
+                {k.preview} · created {k.created} · last used {k.lastUsed}
+              </p>
+            </div>
+            <button
+              onClick={() => {
+                setCopied(k.id);
+                window.setTimeout(() => setCopied(null), 1400);
+              }}
+              className="flex items-center gap-1.5 rounded-md border border-[#E8E8ED] px-2.5 py-1.5 font-mono text-[12px] text-[#6E6E73] transition-colors hover:border-[#1D1D1F]/25"
+            >
+              {copied === k.id ? <Check className="size-3.5 text-[#0071E3]" /> : <Copy className="size-3.5" />}
+              {copied === k.id ? "copied" : "copy"}
+            </button>
+          </div>
+        ))}
+      </div>
+
+      <div className="mt-4 rounded-lg border border-[#E8E8ED]">
+        <div className="border-b border-[#E8E8ED] px-5 py-3.5">
+          <p className="text-[14px] font-medium">Embedding provider credentials</p>
+          <p className="mt-0.5 text-[12.5px] text-[#6E6E73]">Encrypted at rest. Never returned by the API after save.</p>
+        </div>
+        {PROVIDERS.map((p, i) => (
+          <div key={p.name} className={`flex items-center justify-between px-5 py-3.5 ${i > 0 ? "border-t border-[#E8E8ED]" : ""}`}>
+            <div>
+              <p className="text-[14px] font-medium">{p.name}</p>
+              <p className="mt-0.5 font-mono text-[12px] text-[#6E6E73]">{p.field}</p>
+            </div>
+            <span className={`font-mono text-[12px] ${p.state.startsWith("Not") ? "text-[#6E6E73]" : "text-[#0071E3]"}`}>
+              {p.state}
+            </span>
+          </div>
+        ))}
+      </div>
+
+      <p className="mt-3 font-mono text-[11.5px] leading-relaxed text-[#6E6E73]">
+        Secrets are shown masked after creation. Rotate any key that appears in client-side code, logs, or URLs.
+      </p>
+    </div>
+  );
+}
 
 export default function SettingsPage() {
   const [tab, setTab] = useState<Tab>("General");
@@ -168,6 +243,8 @@ export default function SettingsPage() {
               </button>
             </div>
           )}
+
+          {tab === "API Keys" && <ApiKeysTab />}
 
         </motion.div>
       </div>

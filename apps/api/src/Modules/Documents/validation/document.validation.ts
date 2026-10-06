@@ -38,6 +38,7 @@ export const searchSchema = z.object({
     .min(1, "Query is required")
     .max(2000, "Query is too long"),
   topK: z.number().int().min(1).max(20).default(5),
+  knowledgeBase: z.string().trim().min(1).optional(),
 });
 
 export type SearchRequest = z.infer<typeof searchSchema>;
@@ -49,6 +50,7 @@ export const askSchema = z.object({
     .min(1, "Query is required")
     .max(2000, "Query is too long"),
   topK: z.number().int().min(1).max(20).default(5),
+  knowledgeBase: z.string().trim().min(1).optional(),
 });
 
 export type AskRequest = z.infer<typeof askSchema>;

@@ -1,9 +1,10 @@
 /**
  * Shared RAGX SDK/server contract.
  *
- * The developer configures exactly one provider with its key plus the
- * RAGX project key. Everything else (chunking, models, retrieval) is
- * decided internally by RAGX and never exposed.
+ * RAGX is the retrieval layer: the developer configures exactly one
+ * embedding provider (plus the RAGX project key) and gets back relevant
+ * context. Generation stays in the developer's application — the SDK has
+ * no LLM configuration.
  */
 
 export type RAGXProviderName = "openai" | "mistral" | "gemini";
@@ -14,14 +15,42 @@ export const RAGX_PROVIDER_NAMES: readonly RAGXProviderName[] = [
   "gemini",
 ] as const;
 
-export interface RAGXConfig {
+/**
+ * Embedding configuration. The embedding key lets RAGX call the selected
+ * provider for document and query embeddings only — never for generation.
+ */
+export interface RAGXEmbeddingConfig {
   provider: RAGXProviderName;
-  providerApiKey: string;
+  apiKey: string;
+  /**
+   * Optional model override (e.g. `"mistral-embed"`). When omitted the
+   * server uses its default for the provider. The same model is used for
+   * indexing and query embedding within a request so the vector space
+   * stays compatible.
+   */
+  model?: string;
+}
+
+export interface RAGXConfig {
+  /**
+   * Canonical embedding configuration.
+   */
+  embedding?: RAGXEmbeddingConfig;
+  /**
+   * @deprecated Use `embedding.provider` instead. Accepted as an alias:
+   * when both are supplied they must match.
+   */
+  provider?: RAGXProviderName;
+  /**
+   * @deprecated Use `embedding.apiKey` instead. Accepted as an alias:
+   * when both are supplied they must match.
+   */
+  providerApiKey?: string;
   /**
    * Canonical RAGX project key (`ragx_live_...`). Authenticates the
    * developer/project with RAGX. Sent as `Authorization: Bearer`.
-   * Conceptually separate from `providerApiKey` (sent via `X-Provider-Key`
-   * so RAGX can call the selected embedding/LLM provider).
+   * Conceptually separate from the embedding key (sent via provider
+   * headers so RAGX can call the selected embedding provider).
    */
   apiKey?: string;
   /**
@@ -73,12 +102,30 @@ export interface SearchResult {
   text: string;
   score: number;
   documentId: string;
+  chunkId: string;
   page?: number;
+  metadata?: Record<string, unknown>;
 }
 
 export interface AskResult {
   answer: string;
   results: SearchResult[];
+}
+
+/** A named, project-scoped group of documents for filtered retrieval. */
+export interface KnowledgeBase {
+  id: string;
+  name: string;
+  description?: string;
+  /** Number of documents currently attached. */
+  documentCount: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateKnowledgeBaseInput {
+  name: string;
+  description?: string;
 }
 
 export function isRAGXProviderName(

@@ -16,33 +16,48 @@ export interface ResolvedProvider {
 }
 
 /**
- * Resolve which provider/key the engine uses for this request.
+ * Resolve which provider/key/model the engine uses for this request.
  *
  * Precedence: explicit per-request SDK headers first, then the project's
- * stored (encrypted) embedding configuration from the dashboard.
- * RAGX picks the model internally in both cases.
+ * stored (encrypted) embedding configuration from the dashboard. The
+ * model override is optional: when the SDK sends `X-Provider-Model` it
+ * must be a non-empty model name (bounded like the stored column) and
+ * applies to both indexing and query embedding within the request, so
+ * the vector space stays compatible. It is never logged or persisted.
  */
 export async function resolveRequestProvider(
   projectId: string,
-  headers: { providerName?: unknown; providerKey?: unknown },
+  headers: {
+    providerName?: unknown;
+    providerKey?: unknown;
+    providerModel?: unknown;
+  },
   providerService = new ProviderService(),
 ): Promise<ResolvedProvider> {
   const headerName =
     typeof headers.providerName === "string" ? headers.providerName.trim() : "";
   const headerKey =
     typeof headers.providerKey === "string" ? headers.providerKey : "";
+  const headerModel =
+    typeof headers.providerModel === "string"
+      ? headers.providerModel.trim()
+      : "";
 
-  if (headerName || headerKey) {
+  if (headerName || headerKey || headerModel) {
     if (!headerName || !headerKey) {
       throw new BadRequestError(
         "Both provider name and provider key are required together",
       );
     }
+    if (headerModel && headerModel.length > 100) {
+      throw new BadRequestError("Provider model name is too long");
+    }
     const runtime = getRAGXProvider(headerName);
     return {
       provider: runtime.name,
       apiKey: headerKey,
-      embeddingModel: RAGX_EMBEDDING_MODELS[runtime.name],
+      embeddingModel:
+        headerModel || RAGX_EMBEDDING_MODELS[runtime.name],
       runtime,
     };
   }

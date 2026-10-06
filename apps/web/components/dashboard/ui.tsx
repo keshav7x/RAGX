@@ -28,7 +28,7 @@ export function StatusDot({ status }: { status: "ready" | "processing" | "failed
   if (status === "processing")
     return (
       <span className="relative flex size-1.5" aria-label="processing">
-        <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#0071E3] opacity-60" />
+        <span className="absolute inline-flex h-full w-full rounded-full bg-[#0071E3] opacity-25" />
         <span className="relative inline-flex size-1.5 rounded-full bg-[#0071E3]" />
       </span>
     );

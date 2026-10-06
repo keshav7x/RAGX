@@ -36,11 +36,22 @@ interface StoredChunkRow {
   page: number | null;
   text: string;
   embedding: number[] | null;
+  metadata?: Record<string, unknown> | null;
 }
 
 export type ListChunksFn = (
   projectId: string,
 ) => Promise<StoredChunkRow[]>;
+
+/**
+ * Write dependency for the driver. `DocumentService` injects its own
+ * repository (tests inject fakes); the registry threads it through scope.
+ * Lazily defaulted so search-only usage never touches the write path.
+ */
+export type ChunkWriteStore = Pick<
+  DocumentRepository,
+  "insertChunks" | "deleteChunksByDocument"
+>;
 
 function defaultListChunks(projectId: string): Promise<StoredChunkRow[]> {
   return new DocumentRepository().listChunksByProject(projectId);
@@ -52,21 +63,53 @@ export class PostgresJsonbVectorStore implements VectorStoreClient {
   constructor(
     private readonly projectId: string,
     private readonly listChunks: ListChunksFn = defaultListChunks,
+    private readonly chunksStore?: ChunkWriteStore,
   ) {}
+
+  private writeStore(): ChunkWriteStore {
+    return this.chunksStore ?? new DocumentRepository();
+  }
 
   async upsert(points: VectorPoint[]): Promise<void> {
     if (points.length === 0) return;
-    const repository = new DocumentRepository();
-    await repository.insertChunks(
+    for (const point of points) {
+      if (!point.documentId?.trim()) {
+        throw new Error("VectorPoint documentId is required");
+      }
+      if (!point.text?.trim()) {
+        throw new Error("VectorPoint text is required");
+      }
+      if (!Array.isArray(point.vector) || point.vector.length === 0 || !point.vector.every((v) => Number.isFinite(v))) {
+        throw new Error("VectorPoint vector must be a non-empty finite array");
+      }
+    }
+    const dim = points[0]!.vector.length;
+    for (const point of points) {
+      if (point.vector.length !== dim) {
+        throw new Error("Embedding dimension mismatch within upsert batch");
+      }
+    }
+    await this.writeStore().insertChunks(
       points.map((point, index) => ({
         documentId: point.documentId,
         projectId: this.projectId,
         page: point.page ?? undefined,
         text: point.text,
         embedding: point.vector,
-        metadata: { page: point.page ?? null, chunkIndex: index },
+        metadata: {
+          page: point.page ?? null,
+          chunkIndex: index,
+          ...(point.metadata ?? {}),
+        },
       })),
     );
+  }
+
+  async deleteByDocument(documentId: string): Promise<void> {
+    if (!documentId?.trim()) {
+      throw new Error("documentId is required");
+    }
+    await this.writeStore().deleteChunksByDocument(documentId, this.projectId);
   }
 
   async search(
@@ -74,6 +117,7 @@ export class PostgresJsonbVectorStore implements VectorStoreClient {
     topK: number,
   ): Promise<VectorSearchHit[]> {
     if (!Array.isArray(vector) || vector.length === 0) return [];
+    if (!vector.every((v) => Number.isFinite(v))) return [];
     const limit =
       Number.isInteger(topK) && topK > 0 ? Math.min(topK, 20) : 5;
 
@@ -99,6 +143,7 @@ export class PostgresJsonbVectorStore implements VectorStoreClient {
         text: row.text,
         documentId: row.documentId,
         page: row.page ?? undefined,
+        metadata: row.metadata ?? undefined,
       }))
       .filter((hit) => hit.score > 0)
       .sort((a, b) => b.score - a.score)
@@ -121,6 +166,7 @@ registerVectorStore(
     new PostgresJsonbVectorStore(
       requireProjectId(scope),
       scope?.listChunks ?? defaultListChunks,
+      scope?.chunksStore,
     ),
 );
 
@@ -130,5 +176,6 @@ registerVectorStore(
     new PostgresJsonbVectorStore(
       requireProjectId(scope),
       scope?.listChunks ?? defaultListChunks,
+      scope?.chunksStore,
     ),
 );

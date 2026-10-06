@@ -146,6 +146,9 @@ function cleanBlock(
       // Structural information only; never drop or alter.
       return { ...block }
     }
+    default: {
+      return null;
+    }
   }
 }
 

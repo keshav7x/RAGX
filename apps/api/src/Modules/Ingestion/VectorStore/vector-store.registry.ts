@@ -15,6 +15,7 @@ import type {
   VectorStoreClient,
   VectorStoreResolution,
 } from "./vector-store.types";
+import type { ChunkWriteStore } from "./postgres-jsonb.vector-store";
 
 export type { VectorStoreClient, VectorStoreResolution } from "./vector-store.types";
 
@@ -23,7 +24,8 @@ export type { VectorStoreClient, VectorStoreResolution } from "./vector-store.ty
  * itself carries no tenant field, so isolation is bound at creation time:
  * factories must scope reads/writes to `scope.projectId`. `listChunks`
  * lets services inject their repository (and tests inject fakes) without
- * the registry importing repository classes.
+ * the registry importing repository classes; `chunksStore` does the same
+ * for the write/delete path.
  */
 export interface VectorStoreScope {
   projectId: string;
@@ -36,8 +38,10 @@ export interface VectorStoreScope {
       page: number | null;
       text: string;
       embedding: number[] | null;
+      metadata?: Record<string, unknown> | null;
     }[]
   >;
+  chunksStore?: ChunkWriteStore;
 }
 
 type VectorStoreFactory = (

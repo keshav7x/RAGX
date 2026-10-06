@@ -1,11 +1,13 @@
-import { ForbiddenError, ProviderError } from "@/Utils/httpError";
+import { ForbiddenError, NotFoundError, ProviderError } from "@/Utils/httpError";
 import { resolveRequestProvider } from "../../Providers/Runtime/resolution";
 import { createEmbeddingProvider } from "../../Ingestion/Embeddings/embedding.registry";
+import { embedQuery } from "../../Ingestion/Embeddings/embedding.types";
 import { createVectorStore } from "../../Ingestion/VectorStore/vector-store.registry";
 // Side-effect import: self-registers the "pgvector"/"postgres" JSONB
 // driver so `createVectorStore` resolves without services naming a
 // concrete class.
 import "../../Ingestion/VectorStore/postgres-jsonb.vector-store";
+import { KnowledgeBaseRepository } from "../../KnowledgeBases/Repository/knowledge-base.repo";
 import { ProviderService } from "../../Providers/Services/provider.services";
 import { DocumentRepository } from "../Repository/document.repo";
 import type { ProviderHeaders } from "./document.services";
@@ -60,6 +62,7 @@ export class RetrievalService {
     private readonly documentRepository = new DocumentRepository(),
     private readonly providerService = new ProviderService(),
     private readonly checkOutput: GuardrailCheck = defaultGuardrailCheck,
+    private readonly knowledgeBaseRepository = new KnowledgeBaseRepository(),
   ) {}
 
   async search(
@@ -67,6 +70,7 @@ export class RetrievalService {
     query: string,
     topK: number,
     providerHeaders: ProviderHeaders = {},
+    options: { knowledgeBaseId?: string } = {},
   ): Promise<SearchResult[]> {
     // Defense in depth: controllers already validate via zod, but direct
     // callers (jobs, tests) bypass them. Empty queries return no results
@@ -89,8 +93,29 @@ export class RetrievalService {
       resolved.apiKey,
       resolved.embeddingModel,
     );
-    const [queryVector] = await embedding.embed([trimmedQuery]);
-    if (!queryVector || queryVector.length === 0) return [];
+    const queryVector = await embedQuery(embedding, trimmedQuery);
+    if (queryVector.length === 0) return [];
+
+    // Optional knowledge-base scoping: the KB must belong to the project
+    // (404 otherwise, so foreign IDs reveal nothing), and chunk reads are
+    // restricted to its documents in addition to the project boundary.
+    let documentIds: string[] | undefined;
+    if (options.knowledgeBaseId) {
+      const knowledgeBase =
+        await this.knowledgeBaseRepository.findByIdAndProject(
+          options.knowledgeBaseId,
+          projectId,
+        );
+      if (!knowledgeBase) {
+        throw new NotFoundError("Knowledge base not found");
+      }
+      documentIds =
+        await this.knowledgeBaseRepository.listDocumentIds(
+          options.knowledgeBaseId,
+          projectId,
+        );
+      if (documentIds.length === 0) return [];
+    }
 
     // Project-scoped vector search through the store abstraction. The
     // driver reads only this project's chunks (tenant boundary bound at
@@ -100,8 +125,11 @@ export class RetrievalService {
       { provider: "pgvector" },
       {
         projectId,
-        listChunks: (pid) =>
-          this.documentRepository.listChunksByProject(pid),
+        listChunks: documentIds
+          ? (pid) =>
+              this.documentRepository.listChunksByDocuments(pid, documentIds)
+          : (pid) =>
+              this.documentRepository.listChunksByProject(pid),
       },
     );
     const hits = await vectorStore.search(queryVector, limit);
@@ -110,7 +138,9 @@ export class RetrievalService {
       score: hit.score,
       text: hit.text,
       documentId: hit.documentId,
+      chunkId: hit.id,
       page: hit.page ?? undefined,
+      metadata: hit.metadata ?? undefined,
     }));
   }
 
@@ -119,8 +149,15 @@ export class RetrievalService {
     query: string,
     topK: number,
     providerHeaders: ProviderHeaders = {},
+    options: { knowledgeBaseId?: string } = {},
   ): Promise<AskResult> {
-    const results = await this.search(projectId, query, topK, providerHeaders);
+    const results = await this.search(
+      projectId,
+      query,
+      topK,
+      providerHeaders,
+      options,
+    );
 
     if (results.length === 0) {
       return {
