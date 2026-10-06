@@ -93,14 +93,33 @@ export class KnowledgeBaseRepository {
     return row;
   }
 
-  async isDocumentAttached(knowledgeBaseId: string, documentId: string) {
+  /**
+   * Scoped attach check: the link counts only when the knowledge base and
+   * the document both belong to `projectId` (same-query join, so a
+   * caller-supplied ID pair can never observe another project's links).
+   */
+  async isDocumentAttached(
+    knowledgeBaseId: string,
+    documentId: string,
+    projectId: string,
+  ) {
     const [row] = await this.DB
       .select({ id: knowledgeBaseDocumentTable.id })
       .from(knowledgeBaseDocumentTable)
+      .innerJoin(
+        knowledgeBaseTable,
+        eq(knowledgeBaseTable.id, knowledgeBaseDocumentTable.knowledgeBaseId),
+      )
+      .innerJoin(
+        documentTable,
+        eq(documentTable.id, knowledgeBaseDocumentTable.documentId),
+      )
       .where(
         and(
           eq(knowledgeBaseDocumentTable.knowledgeBaseId, knowledgeBaseId),
           eq(knowledgeBaseDocumentTable.documentId, documentId),
+          eq(knowledgeBaseTable.projectId, projectId),
+          eq(documentTable.projectId, projectId),
         ),
       );
 

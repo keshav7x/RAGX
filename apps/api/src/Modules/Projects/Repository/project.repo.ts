@@ -32,6 +32,11 @@ export class ProjectRepository {
     return createdProject;
   }
 
+  /**
+   * Internal lookup by ID only. The project ID here is server-derived
+   * (from a verified API-key hash), never caller-supplied, so no tenant
+   * scope applies. Ownership checks must use `findByIdAndUserId`.
+   */
   async findById(projectId: string) {
     const [project] = await this.DB
       .select()

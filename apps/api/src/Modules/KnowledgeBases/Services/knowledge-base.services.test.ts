@@ -68,8 +68,15 @@ function knowledgeBaseRepo() {
       }
       return { id };
     },
-    isDocumentAttached: async (knowledgeBaseId: string, documentId: string) =>
-      links.has(key(knowledgeBaseId, documentId)),
+    isDocumentAttached: async (
+      knowledgeBaseId: string,
+      documentId: string,
+      projectId: string,
+    ) => {
+      const row = bases.get(knowledgeBaseId);
+      if (!row || row.projectId !== projectId) return false;
+      return links.has(key(knowledgeBaseId, documentId));
+    },
     addDocument: async (knowledgeBaseId: string, documentId: string) => {
       if (links.has(key(knowledgeBaseId, documentId))) {
         throw Object.assign(new Error("duplicate key value"), {

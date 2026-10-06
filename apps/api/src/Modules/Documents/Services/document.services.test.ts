@@ -103,19 +103,32 @@ function documentRepo() {
       };
       return { ...docs[id]! };
     },
-    findById: async (id: string) => docs[id],
-    markProcessing: async (id: string) => {
-      docs[id]!.status = "PROCESSING";
+    findByIdAndProject: async (id: string, projectId: string) => {
+      const doc = docs[id];
+      return doc && doc.projectId === projectId ? doc : undefined;
+    },
+    markProcessing: async (id: string, projectId: string) => {
+      const doc = docs[id];
+      if (!doc || doc.projectId !== projectId) return undefined;
+      doc.status = "PROCESSING";
       return { id };
     },
-    markCompleted: async (id: string, chunkCount: number) => {
-      docs[id]!.status = "COMPLETED";
-      docs[id]!.chunkCount = chunkCount;
+    markCompleted: async (
+      id: string,
+      projectId: string,
+      chunkCount: number,
+    ) => {
+      const doc = docs[id];
+      if (!doc || doc.projectId !== projectId) return undefined;
+      doc.status = "COMPLETED";
+      doc.chunkCount = chunkCount;
       return { id };
     },
-    markFailed: async (id: string, error: string) => {
-      docs[id]!.status = "FAILED";
-      (docs[id] as FakeDoc).error = error;
+    markFailed: async (id: string, projectId: string, error: string) => {
+      const doc = docs[id];
+      if (!doc || doc.projectId !== projectId) return undefined;
+      doc.status = "FAILED";
+      (doc as FakeDoc).error = error;
       return { id };
     },
     listStuckDocuments: async () =>
@@ -124,10 +137,6 @@ function documentRepo() {
         .map((d) => ({ id: d.id, projectId: d.projectId })),
     listByProject: async (projectId: string) =>
       Object.values(docs).filter((d) => d.projectId === projectId),
-    findByIdAndProject: async (id: string, projectId: string) => {
-      const doc = docs[id];
-      return doc && doc.projectId === projectId ? doc : undefined;
-    },
     deleteByIdAndProject: async (id: string, projectId: string) => {
       const doc = docs[id];
       if (!doc || doc.projectId !== projectId) return undefined;
@@ -151,9 +160,11 @@ function documentRepo() {
     ) => {
       chunks.push(...rows);
     },
-    deleteChunksByDocument: async (documentId: string) => {
+    deleteChunksByDocument: async (documentId: string, projectId: string) => {
       for (let i = chunks.length - 1; i >= 0; i--) {
-        if (chunks[i]!.documentId === documentId) chunks.splice(i, 1);
+        const row = chunks[i]!;
+        if (row.documentId === documentId && row.projectId === projectId)
+          chunks.splice(i, 1);
       }
     },
     listChunksByProject: async (projectId: string) =>

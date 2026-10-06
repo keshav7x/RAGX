@@ -222,6 +222,7 @@ export class DocumentService {
     } catch (error) {
       await this.documentRepository.markFailed(
         created.id,
+        projectId,
         safeFailureMessage(error),
       );
       throw error;
@@ -287,9 +288,14 @@ export class DocumentService {
     documentId: string,
     providerHeaders: ProviderHeaders = {},
   ): Promise<BatchDocumentSummary> {
-    const row = await this.documentRepository.findById(documentId);
+    // Single scoped read: missing and foreign documents are
+    // indistinguishable (404), and no unscoped row ever enters the worker.
+    const row = await this.documentRepository.findByIdAndProject(
+      documentId,
+      projectId,
+    );
 
-    if (!row || row.projectId !== projectId) {
+    if (!row) {
       throw new NotFoundError("Document not found");
     }
     if (row.status === "COMPLETED") {
@@ -297,7 +303,7 @@ export class DocumentService {
     }
 
     try {
-      await this.documentRepository.markProcessing(documentId);
+      await this.documentRepository.markProcessing(documentId, projectId);
 
       // Defense in depth: upload already enforces MAX_DOCUMENT_BYTES, but
       // the stored object could have been replaced out of band. Checking
@@ -379,9 +385,9 @@ export class DocumentService {
       // Idempotent retry: a previous attempt may have written rows before
       // failing at markCompleted (or the job was requeued after a crash).
       // Clearing this document's vectors first guarantees no duplicates.
-      // Ownership was already verified via findById above. Deletion and
-      // upsert both run AFTER successful embedding, so an embedding
-      // failure can never wipe already-indexed chunks.
+      // Ownership was verified by the scoped read above, and deletion and
+      // upsert are themselves project-scoped, so an embedding failure can
+      // never wipe already-indexed chunks of another project.
       await vectorStore.deleteByDocument(documentId);
       await vectorStore.upsert(
         chunks.map((chunk, i) => ({
@@ -403,12 +409,17 @@ export class DocumentService {
           },
         })),
       );
-      await this.documentRepository.markCompleted(documentId, chunks.length);
+      await this.documentRepository.markCompleted(
+        documentId,
+        projectId,
+        chunks.length,
+      );
 
       return toSummary(row.filename, "COMPLETED", documentId);
     } catch (error) {
       await this.documentRepository.markFailed(
         documentId,
+        projectId,
         safeFailureMessage(error),
       );
       throw error;

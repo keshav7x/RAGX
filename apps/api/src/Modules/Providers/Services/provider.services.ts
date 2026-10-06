@@ -1,4 +1,4 @@
-import { ForbiddenError, NotFoundError } from "@/Utils/httpError";
+import { NotFoundError } from "@/Utils/httpError";
 import { decryptSecret, encryptSecret } from "@/Utils/encryption";
 
 import { ProjectRepository } from "../../Projects/Repository/project.repo";
@@ -23,15 +23,18 @@ export class ProviderService {
     private readonly projectRepository = new ProjectRepository(),
   ) {}
 
+  /**
+   * Single scoped query: missing and foreign projects are indistinguishable
+   * (both 404), so project-ID enumeration reveals nothing.
+   */
   private async requireOwnedProject(projectId: string, userId: string) {
-    const project = await this.projectRepository.findById(projectId);
+    const project = await this.projectRepository.findByIdAndUserId(
+      projectId,
+      userId,
+    );
 
     if (!project) {
       throw new NotFoundError("Project not found");
-    }
-
-    if (project.userId !== userId) {
-      throw new ForbiddenError("Access denied");
     }
 
     return project;

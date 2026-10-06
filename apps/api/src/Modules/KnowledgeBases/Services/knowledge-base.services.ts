@@ -114,6 +114,7 @@ export class KnowledgeBaseService {
       await this.knowledgeBaseRepository.isDocumentAttached(
         knowledgeBaseId,
         documentId,
+        projectId,
       );
     if (attached) {
       throw new ConflictError(

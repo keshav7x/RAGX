@@ -52,40 +52,53 @@ export class DocumentRepository {
     return row;
   }
 
-  async findById(documentId: string) {
-    const [row] = await this.DB
-      .select(documentColumns)
-      .from(documentTable)
-      .where(eq(documentTable.id, documentId));
-
-    return row;
-  }
-
-  async markProcessing(documentId: string) {
+  /**
+   * Scoped lifecycle writes. Every transition filters by
+   * (id, projectId) in a single statement, so a caller-supplied document
+   * ID can never flip another project's row — even if a queue payload or
+   * future caller is compromised. Returns undefined when the document is
+   * missing or belongs to another project (callers map both to 404).
+   */
+  async markProcessing(documentId: string, projectId: string) {
     const [row] = await this.DB
       .update(documentTable)
       .set({ status: "PROCESSING", error: null, updatedAt: new Date() })
-      .where(eq(documentTable.id, documentId))
+      .where(
+        and(
+          eq(documentTable.id, documentId),
+          eq(documentTable.projectId, projectId),
+        ),
+      )
       .returning({ id: documentTable.id });
 
     return row;
   }
 
-  async markCompleted(documentId: string, chunkCount: number) {
+  async markCompleted(documentId: string, projectId: string, chunkCount: number) {
     const [row] = await this.DB
       .update(documentTable)
       .set({ status: "COMPLETED", chunkCount, updatedAt: new Date() })
-      .where(eq(documentTable.id, documentId))
+      .where(
+        and(
+          eq(documentTable.id, documentId),
+          eq(documentTable.projectId, projectId),
+        ),
+      )
       .returning({ id: documentTable.id });
 
     return row;
   }
 
-  async markFailed(documentId: string, error: string) {
+  async markFailed(documentId: string, projectId: string, error: string) {
     const [row] = await this.DB
       .update(documentTable)
       .set({ status: "FAILED", error, updatedAt: new Date() })
-      .where(eq(documentTable.id, documentId))
+      .where(
+        and(
+          eq(documentTable.id, documentId),
+          eq(documentTable.projectId, projectId),
+        ),
+      )
       .returning({ id: documentTable.id });
 
     return row;
@@ -173,16 +186,16 @@ export class DocumentRepository {
    * Remove stale chunks for one document before (re)inserting.
    * Makes retries idempotent: a FAILED attempt that already wrote rows,
    * or a PROCESSING row requeued after a crash, never leaves duplicates.
-   * Scoped by (documentId, projectId) so a caller-supplied ID can never
-   * reach another project's vectors even if ownership check is skipped.
+   * Always scoped by (documentId, projectId) — `projectId` is required so
+   * a caller-supplied ID can never reach another project's vectors even
+   * if an ownership check is skipped upstream.
    */
-  async deleteChunksByDocument(documentId: string, projectId?: string) {
-    const conditions = [eq(documentChunkTable.documentId, documentId)];
-    if (projectId) {
-      conditions.push(eq(documentChunkTable.projectId, projectId));
-    }
+  async deleteChunksByDocument(documentId: string, projectId: string) {
     await this.DB.delete(documentChunkTable).where(
-      conditions.length > 1 ? and(...conditions) : conditions[0],
+      and(
+        eq(documentChunkTable.documentId, documentId),
+        eq(documentChunkTable.projectId, projectId),
+      ),
     );
   }
 

@@ -13,8 +13,8 @@ const PROJECT = "project-1";
 
 function projectRepo(ownedBy: string | null) {
   return {
-    findById: async (projectId: string) =>
-      projectId === PROJECT && ownedBy
+    findByIdAndUserId: async (projectId: string, userId: string) =>
+      projectId === PROJECT && ownedBy && ownedBy === userId
         ? {
             id: PROJECT,
             userId: ownedBy,
@@ -154,18 +154,18 @@ describe("ProviderService", () => {
     });
   });
 
-  it("blocks access to another user's project", async () => {
+  it("hides another user's project (404, not 403 — no leaking)", async () => {
     const { service } = serviceWith(OWNER);
 
     await expect(
       service.saveEmbedding(PROJECT, INTRUDER, EMBEDDING_INPUT),
-    ).rejects.toMatchObject({ statusCode: 403 });
+    ).rejects.toMatchObject({ statusCode: 404 });
     await expect(service.getProviders(PROJECT, INTRUDER)).rejects.toMatchObject(
-      { statusCode: 403 },
+      { statusCode: 404 },
     );
     await expect(
       service.deleteEmbedding(PROJECT, INTRUDER),
-    ).rejects.toMatchObject({ statusCode: 403 });
+    ).rejects.toMatchObject({ statusCode: 404 });
   });
 
   it("returns 404 for unknown projects", async () => {

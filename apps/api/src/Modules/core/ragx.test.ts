@@ -103,18 +103,31 @@ function repos() {
       };
       return { ...docs[id]! };
     },
-    findById: async (id: string) => docs[id],
-    markProcessing: async (id: string) => {
-      docs[id]!.status = "PROCESSING";
+    findByIdAndProject: async (id: string, projectId: string) => {
+      const doc = docs[id];
+      return doc && doc.projectId === projectId ? doc : undefined;
+    },
+    markProcessing: async (id: string, projectId: string) => {
+      const doc = docs[id];
+      if (!doc || doc.projectId !== projectId) return undefined;
+      doc.status = "PROCESSING";
       return { id };
     },
-    markCompleted: async (id: string, chunkCount: number) => {
-      docs[id]!.status = "COMPLETED";
-      docs[id]!.chunkCount = chunkCount;
+    markCompleted: async (
+      id: string,
+      projectId: string,
+      chunkCount: number,
+    ) => {
+      const doc = docs[id];
+      if (!doc || doc.projectId !== projectId) return undefined;
+      doc.status = "COMPLETED";
+      doc.chunkCount = chunkCount;
       return { id };
     },
-    markFailed: async (id: string, _error: string) => {
-      docs[id]!.status = "FAILED";
+    markFailed: async (id: string, projectId: string, _error: string) => {
+      const doc = docs[id];
+      if (!doc || doc.projectId !== projectId) return undefined;
+      doc.status = "FAILED";
       return { id };
     },
     listStuckDocuments: async () =>
@@ -123,10 +136,6 @@ function repos() {
         .map((d) => ({ id: d.id, projectId: d.projectId })),
     listByProject: async (projectId: string) =>
       Object.values(docs).filter((d) => d.projectId === projectId),
-    findByIdAndProject: async (id: string, projectId: string) => {
-      const doc = docs[id];
-      return doc && doc.projectId === projectId ? doc : undefined;
-    },
     deleteByIdAndProject: async (id: string, projectId: string) => {
       const doc = docs[id];
       if (!doc || doc.projectId !== projectId) return undefined;
