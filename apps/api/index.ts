@@ -1,5 +1,5 @@
 import app from "@/app";
-import { envConfig } from "@/config/envConfig";
+import { envConfig, validateStartupConfig } from "@/config/envConfig";
 import { createProcessDocumentHandler } from "@/Modules/Documents/Jobs/handlers/process-document.job";
 import { initDocumentJobs, recoverPendingDocuments } from "@/Modules/Documents/Jobs/document.jobs";
 import { DocumentService } from "@/Modules/Documents/Services/document.services";
@@ -23,6 +23,11 @@ const documentService = new DocumentService();
 initDocumentJobs(createProcessDocumentHandler(documentService));
 
 
+
+// Fail closed on missing/weak secrets and malformed values before binding.
+// In production this throws; in development/test it warns (except PORT and
+// JWT_EXPIRES_IN, which always throw because they would crash per request).
+validateStartupConfig();
 
 app.listen(envConfig.PORT,()=>{
     console.log(`server is listening at port ${envConfig.PORT}`);

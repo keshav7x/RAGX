@@ -1,15 +1,18 @@
 import crypto from "node:crypto";
 
-import { envConfig } from "@/config/envConfig";
+import { resolveRagxEncryptionKeyRaw } from "@/config/envConfig";
 
 const KEY_BYTES = 32;
 const IV_BYTES = 12;
 const PREFIX = "v1";
+// Refuse absurdly large payloads before base64-decoding them into memory.
+const MAX_ENCRYPTED_PAYLOAD_CHARS = 64 * 1024;
 
 function resolveKey(): Buffer {
   // Read at call time (not import time) so tests and key rotation
-  // can set the variable before first use.
-  const raw = process.env.RAGX_ENCRYPTION_KEY || envConfig.RAGX_ENCRYPTION_KEY;
+  // can set the variable before first use. `envConfig` is the only module
+  // allowed to touch `process.env`; everything else reads it from here.
+  const raw = resolveRagxEncryptionKeyRaw();
 
   if (!raw) {
     throw new Error(
@@ -65,7 +68,13 @@ export function encryptSecret(plaintext: string): string {
 }
 
 export function decryptSecret(payload: string): string {
-  const [prefix, ivB64, tagB64, dataB64] = (payload ?? "").split(".");
+  if (typeof payload !== "string" || payload.length === 0) {
+    throw new Error("Invalid encrypted payload");
+  }
+  if (payload.length > MAX_ENCRYPTED_PAYLOAD_CHARS) {
+    throw new Error("Invalid encrypted payload");
+  }
+  const [prefix, ivB64, tagB64, dataB64] = payload.split(".");
 
   if (prefix !== PREFIX || !ivB64 || !tagB64 || !dataB64) {
     throw new Error("Invalid encrypted payload");

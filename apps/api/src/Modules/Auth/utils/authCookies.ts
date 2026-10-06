@@ -1,10 +1,16 @@
 import type { CookieOptions, Response } from "express";
 
-import { envConfig } from "@/config/envConfig";
+import {
+  DEFAULT_AUTH_COOKIE_MAX_AGE_MS,
+  envConfig,
+  getAuthCookieMaxAgeMs,
+} from "@/config/envConfig";
 
 export const AUTH_COOKIE_NAME = "access_token";
 
-export const AUTH_COOKIE_MAX_AGE = 7 * 24 * 60 * 60 * 1000;
+// Kept for backwards-compatible imports; prefer `getAuthCookieMaxAgeMs()`
+// so cookie lifetime tracks `JWT_EXPIRES_IN` instead of drifting from it.
+export const AUTH_COOKIE_MAX_AGE = DEFAULT_AUTH_COOKIE_MAX_AGE_MS;
 
 function baseCookieOptions(): CookieOptions {
   return {
@@ -18,7 +24,7 @@ function baseCookieOptions(): CookieOptions {
 export function setAuthCookie(res: Response, token: string): void {
   res.cookie(AUTH_COOKIE_NAME, token, {
     ...baseCookieOptions(),
-    maxAge: AUTH_COOKIE_MAX_AGE,
+    maxAge: getAuthCookieMaxAgeMs(),
   });
 }
 
