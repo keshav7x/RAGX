@@ -2,6 +2,11 @@ import { HttpError } from "@/Utils/httpError";
 
 import type { RAGXProviderName } from "@repo/types";
 
+import {
+  PROVIDER_REQUEST_TIMEOUT_MS,
+  fetchWithTimeout,
+} from "./safety";
+
 export interface RAGXProvider {
   readonly name: RAGXProviderName;
 
@@ -64,17 +69,23 @@ export function postJson(
   url: string,
   apiKey: string,
   body: unknown,
+  opts: { timeoutMs?: number } = {},
 ): Promise<Response> {
-  return fetch(url, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
+  // Hard timeout: a hanging upstream must never pin the document workers.
+  // Auth is a fixed `Bearer` scheme over a validated key (see
+  // `resolveRequestProvider`); keys with control characters are rejected
+  // there, so header splitting here is impossible.
+  return fetchWithTimeout(
+    provider,
+    url,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(body),
     },
-    body: JSON.stringify(body),
-  }).catch(() => {
-    throw new ProviderUpstreamError(provider, "unreachable", {
-      retryable: true,
-    });
-  });
+    opts.timeoutMs ?? PROVIDER_REQUEST_TIMEOUT_MS,
+  );
 }

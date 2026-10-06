@@ -74,8 +74,7 @@ describe("provider validation", () => {
     ).toBe(false);
   });
 
-  it("never echoes secrets in validation errors", () => {
-    const secret = "sk-super-secret-should-never-appear-123";
+  it("never echoes secrets in validation errors", () => {    const secret = "sk-super-secret-should-never-appear-123";
     const parsed = vectorStoreConfigSchema.safeParse({
       provider: "qdrant",
       url: "not-a-url",
@@ -99,5 +98,101 @@ describe("provider validation", () => {
         secret,
       );
     }
+  });
+
+  it("rejects Qdrant URLs targeting internal networks (stored SSRF)", () => {
+    const base = { provider: "qdrant", collection: "docs" } as const;
+    for (const url of [
+      "http://localhost:6333",
+      "http://LOCALHOST:6333",
+      "http://127.0.0.1:6333",
+      "http://10.0.0.5:6333",
+      "http://172.16.0.5:6333",
+      "http://192.168.1.5:6333",
+      "http://169.254.169.254/latest/meta-data/",
+      "http://0.0.0.0:6333",
+      "http://[::1]:6333",
+      "http://[::ffff:127.0.0.1]:6333",
+      "http://2130706433:6333",
+      "http://0x7f000001:6333",
+      "ftp://files.example.com/qdrant",
+      "https://user:pass@xyz.cloud.qdrant.io",
+    ]) {
+      expect(
+        vectorStoreConfigSchema.safeParse({ ...base, url }).success,
+        url,
+      ).toBe(false);
+    }
+
+    expect(
+      vectorStoreConfigSchema.safeParse({
+        ...base,
+        url: "https://xyz.cloud.qdrant.io",
+      }).success,
+    ).toBe(true);
+  });
+
+  it("gates pgvector connection strings to public TCP hosts", () => {
+    expect(
+      vectorStoreConfigSchema.safeParse({
+        provider: "pgvector",
+        connectionString: "postgresql://user:pass@localhost:5432/ragx",
+      }).success,
+    ).toBe(false);
+    expect(
+      vectorStoreConfigSchema.safeParse({
+        provider: "pgvector",
+        connectionString: "postgresql://user:pass@10.0.0.5:5432/ragx",
+      }).success,
+    ).toBe(false);
+    expect(
+      vectorStoreConfigSchema.safeParse({
+        provider: "pgvector",
+        connectionString: "mysql://db.example.com:3306/ragx",
+      }).success,
+    ).toBe(false);
+    expect(
+      vectorStoreConfigSchema.safeParse({
+        provider: "pgvector",
+        connectionString: "postgresql://user:pass@db.example.com:5432/ragx",
+      }).success,
+    ).toBe(true);
+    expect(
+      vectorStoreConfigSchema.safeParse({ provider: "pgvector" }).success,
+    ).toBe(true);
+  });
+
+  it("rejects model names and keys that could inject upstream", () => {
+    const base = { provider: "openai", apiKey: "sk-test-key-12345678" } as const;
+    for (const model of [
+      "x?foo=bar",
+      "../models",
+      "model\ninjected",
+      "a".repeat(101),
+    ]) {
+      expect(
+        embeddingConfigSchema.safeParse({ ...base, model }).success,
+        model,
+      ).toBe(false);
+    }
+    expect(
+      embeddingConfigSchema.safeParse({
+        ...base,
+        apiKey: "short",
+      }).success,
+    ).toBe(false);
+    expect(
+      embeddingConfigSchema.safeParse({
+        ...base,
+        apiKey: "sk-test\r\ninjected: x",
+      }).success,
+    ).toBe(false);
+    expect(
+      vectorStoreConfigSchema.safeParse({
+        provider: "pinecone",
+        apiKey: "pc-test-key-12345678",
+        index: "My_Index!",
+      }).success,
+    ).toBe(false);
   });
 });

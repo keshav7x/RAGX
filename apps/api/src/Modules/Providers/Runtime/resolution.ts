@@ -6,6 +6,11 @@ import type { RAGXProviderName } from "@repo/types";
 import { ProviderService } from "../Services/provider.services";
 import { getRAGXProvider } from "./registry";
 import type { RAGXProvider } from "./provider";
+import {
+  MAX_HEADER_KEY_LENGTH,
+  isSafeHeaderValue,
+  isValidModelName,
+} from "./safety";
 
 export interface ResolvedProvider {
   provider: RAGXProviderName;
@@ -49,8 +54,19 @@ export async function resolveRequestProvider(
         "Both provider name and provider key are required together",
       );
     }
-    if (headerModel && headerModel.length > 100) {
-      throw new BadRequestError("Provider model name is too long");
+    // Keys ride into an `Authorization: Bearer` header upstream: bound
+    // their length (mirrors stored-config validation) and reject control
+    // characters so CRLF/header splitting is impossible.
+    if (
+      headerKey.length < 8 ||
+      !isSafeHeaderValue(headerKey, MAX_HEADER_KEY_LENGTH)
+    ) {
+      throw new BadRequestError("Provider key is invalid");
+    }
+    // Model names ride into the Gemini URL path: allow-list the charset
+    // (length + characters), not just the length.
+    if (headerModel && !isValidModelName(headerModel)) {
+      throw new BadRequestError("Provider model name is invalid");
     }
     const runtime = getRAGXProvider(headerName);
     return {
@@ -65,6 +81,12 @@ export async function resolveRequestProvider(
   try {
     const stored =
       await providerService.resolveEmbeddingCredentials(projectId);
+    // Stored rows predate validation hardening; fail with a clear 400
+    // (re-save in the dashboard) instead of interpolating garbage into
+    // upstream URLs or embedding the wrong vector space.
+    if (!isValidModelName(stored.model)) {
+      throw new BadRequestError("Stored provider model is invalid");
+    }
     const runtime = getRAGXProvider(stored.provider);
     return {
       provider: runtime.name,

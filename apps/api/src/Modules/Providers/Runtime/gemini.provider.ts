@@ -2,6 +2,7 @@ import { RAGX_CHAT_MODELS, RAGX_EMBEDDING_MODELS } from "@repo/types";
 
 import { ProviderUpstreamError } from "./provider";
 import type { RAGXProvider } from "./provider";
+import { encodeModelPathSegment, fetchWithTimeout } from "./safety";
 
 const BASE_URL = "https://generativelanguage.googleapis.com/v1beta";
 
@@ -18,18 +19,11 @@ async function post(
   url: string,
   body: unknown,
 ): Promise<unknown> {
-  let res: Response;
-  try {
-    res = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
-  } catch {
-    throw new ProviderUpstreamError(provider, "unreachable", {
-      retryable: true,
-    });
-  }
+  const res = await fetchWithTimeout(provider, url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
   if (!res.ok) {
     throw new ProviderUpstreamError(provider, `status ${res.status}`, {
       status: res.status,
@@ -54,7 +48,10 @@ export class GeminiProvider implements RAGXProvider {
     const model = opts.model ?? RAGX_EMBEDDING_MODELS.gemini;
 
     // Gemini authenticates via query key; used server-side only, never logged.
-    const url = `${BASE_URL}/models/${model}:batchEmbedContents?key=${encodeURIComponent(apiKey)}`;
+    // The model is allow-listed + encoded: `x?foo=bar` or `../` cannot
+    // alter the URL path or smuggle query parameters.
+    const segment = encodeModelPathSegment(model);
+    const url = `${BASE_URL}/models/${segment}:batchEmbedContents?key=${encodeURIComponent(apiKey)}`;
     const data = (await post(this.name, url, {
       requests: input.map((text) => ({
         model: `models/${model}`,
@@ -83,7 +80,8 @@ export class GeminiProvider implements RAGXProvider {
     opts: { model?: string; system?: string } = {},
   ): Promise<string> {
     const model = opts.model ?? RAGX_CHAT_MODELS.gemini;
-    const url = `${BASE_URL}/models/${model}:generateContent?key=${encodeURIComponent(apiKey)}`;
+    const segment = encodeModelPathSegment(model);
+    const url = `${BASE_URL}/models/${segment}:generateContent?key=${encodeURIComponent(apiKey)}`;
 
     const data = (await post(this.name, url, {
       ...(opts.system
